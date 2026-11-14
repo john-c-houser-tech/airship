@@ -15,6 +15,10 @@ archived), whose rules and tests are the spec for Airship's rules.
   scripts; commit them.
 - `desktop/` is the one small Omarchy layer: the theme's accent
   (`theme.gd`) and `notify-send` (`notifier.gd`).
+- `i18n/<code>.json` translate the English on screen, one file per Omarchy
+  language code. Every line shown goes through `translate()` (or the app's
+  `say()`), and the tests fail if any language lacks it or keeps a string
+  nothing says any more: a new line needs all six translations.
 - `scene/` draws: the backdrop and the weather layer (redrawn only when the
   light or weather changes), the machinery (drawn once), the workshop (the
   arm and plant, redrawn while the arm moves) and the words on screen.

@@ -4,7 +4,7 @@ extends RefCounted
 ## calls in (a key pressed, time passed) and hears back a list of events
 ## saying what changed; App itself runs no timers and draws nothing.
 ##
-## It grows with milestone 4: languages and sounds join it in later PRs.
+## It grows with milestone 4: the sounds join it in a later PR.
 
 ## Something that changed, for the window to hear about.
 enum Event {
@@ -24,6 +24,8 @@ enum Event {
 	## A plant was built to the end and kept, which the desktop should be
 	## told.
 	PLANT_BUILT,
+	## The language changed, so everything said is said again.
+	LANGUAGE,
 }
 
 ## The desktop's accent until the theme says otherwise (4d), as in Grove.
@@ -34,6 +36,8 @@ var session: Session
 var garden: Garden
 var weather: Weather
 var daylight: Daylight
+## The words in the language Omarchy (or AIRSHIP_LANGUAGE) picked.
+var catalog: Catalog
 ## The colour dusk is warmed toward.
 var accent := DEFAULT_ACCENT
 ## How the garden's plants last changed.
@@ -51,6 +55,7 @@ func _init(options_: Options) -> void:
 	if path.is_empty():
 		path = Garden.default_path(options.data_directory)
 	garden = Garden.new(path)
+	catalog = Catalog.new(options.language if not options.language.is_empty() else "en")
 	weather = Weather.new(Weather.kind_named(options.weather))
 	# The idle window has weather too, in today's season: seeded by the date,
 	# so the core stays a function of its inputs.
@@ -80,6 +85,19 @@ func advance(milliseconds: int) -> Array[int]:
 	# weather it ended in.
 	var moved := changes.progress and weather.set_progress(session.progress())
 	return _session_changed(changes, moved)
+
+
+## Takes the desktop's language, unless AIRSHIP_LANGUAGE pins one.
+func set_language(code: String) -> Array[int]:
+	if not options.language.is_empty() or code == catalog.code():
+		return []
+	catalog = Catalog.new(code)
+	return [Event.LANGUAGE]
+
+
+## The translation of an English text in the current language.
+func say(source: String) -> String:
+	return catalog.translate(source)
 
 
 ## Takes the desktop's accent, which warms dusk.
