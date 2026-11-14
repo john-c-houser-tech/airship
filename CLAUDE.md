@@ -8,8 +8,16 @@ archived), whose rules and tests are the spec for Airship's rules.
 
 ## Files
 
-- `project.godot`, `main.tscn`, `main.gd`: the project and its main scene.
-  Keep the `.uid` files Godot writes beside scripts; commit them.
+- `project.godot`, `main.tscn`, `main.gd`: the project and the window. The
+  window gives the core time and keys, shows the events it returns, and sets
+  the frame rate (30 while the arm moves, a few while it rests, next to
+  nothing between sessions). Keep the `.uid` files Godot writes beside
+  scripts; commit them.
+- `desktop/` is the one small Omarchy layer: the theme's accent
+  (`theme.gd`) and `notify-send` (`notifier.gd`).
+- `scene/` draws: the backdrop and the weather layer (redrawn only when the
+  light or weather changes), the machinery (drawn once), the workshop (the
+  arm and plant, redrawn while the arm moves) and the words on screen.
 - `core/` holds the rules, which draw nothing and run no timers: `app.gd`
   ties them together and returns events saying what changed;
   `options.gd` is the only reader of the environment (the `AIRSHIP_*`

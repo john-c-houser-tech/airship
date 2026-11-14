@@ -26,6 +26,9 @@ var garden_path := ""
 ## Where Airship keeps its data (the garden): XDG_DATA_HOME, else
 ## ~/.local/share. Empty if neither is set.
 var data_directory := ""
+## Omarchy's current theme (~/.local/state/omarchy/current), for the accent
+## colour; empty if HOME isn't set.
+var theme_directory := ""
 
 
 static func from_environment() -> Options:
@@ -53,6 +56,8 @@ static func from_variables(lookup: Callable) -> Options:
 		options.data_directory = data_home
 	elif not home.is_empty():
 		options.data_directory = home.path_join(".local/share")
+	if not home.is_empty():
+		options.theme_directory = home.path_join(".local/state/omarchy/current")
 	return options
 
 

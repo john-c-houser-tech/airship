@@ -32,7 +32,7 @@ func test_a_tick_too_small_to_see_says_nothing() -> void:
 func test_finishing_says_both() -> void:
 	var app := _app(10)
 	app.start(1, 7)
-	same(app.advance(10_000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN] as Array[int], "events")
+	same(app.advance(10_000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN, App.Event.PLANT_BUILT] as Array[int], "events")
 	same(app.session.state(), Session.State.BUILT, "state")
 
 
@@ -72,11 +72,11 @@ func test_a_garden_that_cannot_be_kept_says_so_once() -> void:
 	options.weather = "clear"
 	var app := App.new(options)
 	app.start(1, 1)
-	same(app.advance(25 * 60 * 1000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN, App.Event.GARDEN_PROBLEM] as Array[int], "first")
+	same(app.advance(25 * 60 * 1000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN, App.Event.PLANT_BUILT, App.Event.GARDEN_PROBLEM] as Array[int], "first")
 	same(app.garden.problem(), Garden.Problem.NO_FOLDER, "problem")
 	same(app.garden_change, Garden.Change.INSERTED, "shown, not saved")
 	app.start(1, 2)
-	same(app.advance(25 * 60 * 1000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN] as Array[int], "second")
+	same(app.advance(25 * 60 * 1000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN, App.Event.PLANT_BUILT] as Array[int], "second")
 
 
 func test_a_shortened_session_is_not_kept_without_a_garden_of_its_own() -> void:
@@ -131,7 +131,7 @@ func test_events_come_in_groves_order() -> void:
 		var app := _app(10, "order")
 		app.weather = Weather.new(-1)
 		same(app.start(1, plant_seed), [App.Event.STATE, App.Event.PROGRESS, App.Event.WEATHER] as Array[int], "start")
-		same(app.advance(10_000), [App.Event.STATE, App.Event.PROGRESS, App.Event.WEATHER, App.Event.GARDEN] as Array[int], "finish")
+		same(app.advance(10_000), [App.Event.STATE, App.Event.PROGRESS, App.Event.WEATHER, App.Event.GARDEN, App.Event.PLANT_BUILT] as Array[int], "finish")
 		return
 	check(false, "no seed changed the weather")
 
@@ -185,3 +185,19 @@ func test_the_light_follows_the_clock_unless_pinned() -> void:
 	app.options.time_minutes = 12 * 60 + 30
 	app.refresh_light()
 	check(app.daylight.sun_up, "AIRSHIP_TIME pins it to noon")
+
+
+func test_the_accent_warms_dusk_and_is_news_once() -> void:
+	var app := _app(60, "accent")
+	app.clock = func() -> String: return "2026-11-06T17:10:00"
+	app.refresh_light()
+	var before := app.daylight.bottom
+	same(app.set_accent(Color("#3060ff")), [App.Event.LIGHT] as Array[int], "a new accent")
+	check(app.daylight.bottom != before, "dusk changes colour")
+	same(app.set_accent(Color("#3060ff")), [] as Array[int], "the same accent again")
+
+
+func test_a_rusted_plant_tells_the_desktop_nothing() -> void:
+	var app := _app(10, "rusted-quiet")
+	app.start(1, 7)
+	check(not App.Event.PLANT_BUILT in app.give_up(), "no notice for giving up")

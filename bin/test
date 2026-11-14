@@ -4,7 +4,7 @@
 #   1. import the project
 #   2. run the unit tests in tests/ headless
 #   3. run the main scene headless for a few frames, so every script parses
-#   4. draw a frame under xvfb-run, save it and check two pixels
+#   4. draw a frame of a session under xvfb-run, save it and check the sky
 # Godot keeps going after most errors, so any ERROR or WARNING line in its
 # output fails the run, except the one below.
 set -eu
@@ -49,5 +49,9 @@ fi
 # Silent audio: CI has no sound device, and the tests never play sound aloud.
 # No input method: the desktop's (XMODIFIERS, fcitx on Omarchy) isn't running
 # on the virtual display, and Godot warns when it can't reach it.
-run frame env -u XMODIFIERS xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy -- --shot="$PWD/$out/frame.png"
+# The frame: midsummer noon in clear weather, ten minutes into a session, so
+# the check knows the sky's colour and the arm is at work.
+run frame env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
+    xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --build=600 --check --shot="$PWD/$out/frame.png"
 echo "bin/test: passed; the frame is $out/frame.png"
