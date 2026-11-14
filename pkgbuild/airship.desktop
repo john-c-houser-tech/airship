@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Airship
+Comment=A focus timer where a brass steam arm builds a garden while you work
+Comment[da]=En fokustimer, hvor en messing-dampram bygger en have, mens du arbejder
+Comment[de]=Ein Fokus-Timer, bei dem ein Dampfarm aus Messing einen Garten baut, während du arbeitest
+Comment[es_MX]=Un temporizador de concentración en el que un brazo de vapor de latón construye un jardín mientras trabajas
+Comment[fr]=Un minuteur de concentration où un bras à vapeur en laiton construit un jardin pendant que vous travaillez
+Comment[ja]=作業中に真鍮の蒸気アームが庭を組み立てる集中タイマー
+Comment[pt_BR]=Um temporizador de foco em que um braço a vapor de latão constrói um jardim enquanto você trabalha
+Exec=airship
+Icon=airship
+Terminal=false
+Categories=Utility;
+# Godot names the window after the project.
+StartupWMClass=Airship

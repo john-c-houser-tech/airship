@@ -3,8 +3,10 @@
 # steps run headless, and the frame is drawn on a virtual X display.
 #   1. import the project, and make the sounds (tools/make_sounds.gd)
 #   2. run the unit tests in tests/ headless
-#   3. run the main scene headless for a few frames, so every script parses
-#   4. draw a frame of a session under xvfb-run, save it and check the sky
+#   3. run the main scene headless for a few frames, so every script parses,
+#      and play a train (then a silent one) headless
+#   4. export the package's data file and run it from outside the project
+#   5. draw a frame of a session under xvfb-run, save it and check it
 # Godot keeps going after most errors, so any ERROR or WARNING line in its
 # output fails the run, except the one below.
 set -eu
@@ -12,6 +14,9 @@ cd "$(dirname "$0")/.."
 out=build/test
 rm -rf "$out"
 mkdir -p "$out"
+# Godot leaves out any folder with a .gdignore: the tests' leftovers in
+# build/ (a deliberately broken link among them) are never the project's.
+touch build/.gdignore
 # Godot's own files (logs, editor settings) go here, never in the home folder.
 export XDG_DATA_HOME="$PWD/$out/xdg/data" XDG_CONFIG_HOME="$PWD/$out/xdg/config" XDG_CACHE_HOME="$PWD/$out/xdg/cache"
 
@@ -61,6 +66,26 @@ sounds_run() { # name, volume, then what the log must say
 }
 sounds_run sounds 1 "sound: train sound: stopped "
 sounds_run silent 0 ""
+# The package's data file, as pkgbuild/PKGBUILD makes it, run on its own from
+# outside the project: in German, with a train, so a translation or a sound
+# left out of the export fails here, not after installing.
+run export godot --headless --path . --export-pack Linux "$PWD/$out/airship.pck"
+mkdir -p "$out/elsewhere"
+run packed sh -c "cd '$out/elsewhere' && AIRSHIP_LANGUAGE=de AIRSHIP_SOUND_TEST=train AIRSHIP_WEATHER=clear \
+    timeout 60 godot --headless --main-pack ../airship.pck --audio-driver Dummy \
+    -- --log-words --build=0 --give-up-at=5 --quit-at=8 --log-sounds"
+expected="says: Wird gebaut. Bleib bei deiner Arbeit; die Leertaste nur zum Aufgeben. sound: train sound: stopped "
+if [ "$(grep -E '^(says|sound):' "$out/packed.log" | tr '\n' ' ')" != "$expected" ]; then
+    cat "$out/packed.log"
+    echo "bin/test: packed: the data file didn't speak German and play the train"
+    exit 1
+fi
+# The package and the project must agree on the version.
+pkgver=$(sed -n 's/^pkgver=//p' pkgbuild/PKGBUILD)
+if [ -z "$pkgver" ] || [ "$pkgver" != "$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)" ]; then
+    echo "bin/test: pkgver in pkgbuild/PKGBUILD and config/version in project.godot differ"
+    exit 1
+fi
 # Throwaway prototypes: parsed and run briefly, never looked at.
 run break-task godot --headless --path . --quit-after 5 res://prototypes/break_task/break_task.tscn -- --sessions=3
 run airship-mockup godot --headless --path . --quit-after 5 res://prototypes/airship_mockup/airship_mockup.tscn -- --built=0.9

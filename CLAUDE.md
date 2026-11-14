@@ -34,6 +34,13 @@ archived), whose rules and tests are the spec for Airship's rules.
   each remake would stay in git's history for good. `bin/make-sounds` runs
   it (once, to hear sounds when running from the repo); `bin/test` and the
   package build run it too. Without the files Airship is simply quiet.
+- `pkgbuild/` packages Airship for Arch: one data file (`airship.pck`,
+  exported by the `Linux` preset in `export_presets.cfg`) that Arch's
+  `godot` runs through the `airship` launcher, with a desktop entry, an
+  icon (a placeholder until milestone 5's art) and a pacman hook that
+  speaks up when Godot is upgraded. `bin/install` builds and installs it.
+  `pkgver` and `config/version` in `project.godot` must match (bin/test
+  checks), and bin/test runs the exported file in German with a train.
 - `prototypes/` holds the throwaway tests of milestones 1 to 3.
 - `bin/test` runs every check. It never opens a window on the desktop: it runs
   headless, and draws frames under `xvfb-run` (package `xorg-server-xvfb`).

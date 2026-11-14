@@ -1,0 +1,10 @@
+#!/bin/sh
+# Airship: Arch's Godot running Airship's data file. Godot reads its own
+# flags first; Airship's own (for pictures and checks) go after `--`.
+pck=/usr/share/airship/airship.pck
+if [ ! -r "$pck" ]; then
+    # Without it Godot would open its Project Manager instead.
+    echo "airship: $pck is missing; reinstall Airship (bin/install in its source folder)" >&2
+    exit 1
+fi
+exec godot --main-pack "$pck" "$@"

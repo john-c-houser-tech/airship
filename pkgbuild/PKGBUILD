@@ -1,0 +1,48 @@
+pkgname=airship
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='A focus timer where a brass steam arm builds a garden while you work'
+url='https://github.com/john-c-houser-tech/airship'
+# Airship is one data file that Arch's Godot runs, so it suits any machine
+# Godot does.
+arch=('any')
+license=('MIT')
+depends=('godot' 'libnotify')
+makedepends=('godot')
+optdepends=('noto-fonts-cjk: Japanese text'
+            'pipewire-alsa: the distant sounds on a PipeWire desktop')
+# One data file: nothing to strip, and no debug package to make.
+options=('!debug' '!strip')
+source=()
+sha256sums=()
+
+# Godot runs as an editor here: its settings, cache and logs go in the build
+# folder, never the home folder. It exits 0 after most errors, so its output
+# is read for them.
+godot_checked() {
+  "$@" 2>&1 | tee "$srcdir/godot.log"
+  if grep -E 'ERROR|WARNING|Unicode parsing error' "$srcdir/godot.log"; then
+    echo "Godot reported the problems above" >&2
+    return 1
+  fi
+}
+
+build() {
+  export XDG_DATA_HOME="$srcdir/xdg/data" XDG_CONFIG_HOME="$srcdir/xdg/config" XDG_CACHE_HOME="$srcdir/xdg/cache"
+  cd "$startdir/.."
+  # The distant sounds aren't kept in git: made here, then packed with the rest.
+  godot_checked ./bin/make-sounds
+  mkdir -p build
+  touch build/.gdignore
+  godot_checked godot --headless --path . --export-pack Linux build/airship.pck
+}
+
+package() {
+  cd "$startdir/.."
+  install -Dm644 build/airship.pck "$pkgdir/usr/share/airship/airship.pck"
+  install -Dm755 "$startdir/airship" "$pkgdir/usr/bin/airship"
+  install -Dm644 "$startdir/airship.desktop" "$pkgdir/usr/share/applications/airship.desktop"
+  install -Dm644 "$startdir/airship.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/airship.svg"
+  install -Dm644 "$startdir/airship-godot.hook" "$pkgdir/usr/share/libalpm/hooks/airship-godot.hook"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

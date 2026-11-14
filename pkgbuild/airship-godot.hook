@@ -1,0 +1,11 @@
+# Airship is a data file made by one Godot; a new Godot may not run it. This
+# reminds you after every Godot upgrade; it checks and changes nothing.
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = godot
+
+[Action]
+Description = Reminding you that Airship may need rebuilding for the new Godot...
+When = PostTransaction
+Exec = /usr/bin/echo "Godot was upgraded: if Airship won't start, rebuild it (bin/install in its source folder)."
