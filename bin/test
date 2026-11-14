@@ -34,6 +34,8 @@ run() { # name, then the command
 
 run import godot --headless --path . --import
 run parse godot --headless --path . --quit-after 5
+# Throwaway prototypes: parsed and run briefly, never looked at.
+run break-task godot --headless --path . --quit-after 5 res://prototypes/break_task/break_task.tscn -- --sessions=3
 
 if ! command -v xvfb-run >/dev/null; then
     echo "bin/test: needs xvfb-run (sudo pacman -S xorg-server-xvfb) to draw a frame off the desktop"
