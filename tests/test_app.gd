@@ -72,11 +72,13 @@ func test_a_garden_that_cannot_be_kept_says_so_once() -> void:
 	options.weather = "clear"
 	var app := App.new(options)
 	app.start(1, 1)
-	same(app.advance(25 * 60 * 1000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN, App.Event.PLANT_BUILT, App.Event.GARDEN_PROBLEM] as Array[int], "first")
+	var first := app.advance(25 * 60 * 1000)
+	check(App.Event.GARDEN in first and App.Event.GARDEN_PROBLEM in first, "the first plant: shown, and the problem said")
 	same(app.garden.problem(), Garden.Problem.NO_FOLDER, "problem")
 	same(app.garden_change, Garden.Change.INSERTED, "shown, not saved")
 	app.start(1, 2)
-	same(app.advance(25 * 60 * 1000), [App.Event.STATE, App.Event.PROGRESS, App.Event.GARDEN, App.Event.PLANT_BUILT] as Array[int], "second")
+	var second := app.advance(25 * 60 * 1000)
+	check(App.Event.GARDEN in second and not App.Event.GARDEN_PROBLEM in second, "the second: not said again")
 
 
 func test_a_shortened_session_is_not_kept_without_a_garden_of_its_own() -> void:

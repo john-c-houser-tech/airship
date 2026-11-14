@@ -6,6 +6,7 @@
   "Desktop notices can't be sent (notify-send is missing).": "No se pueden enviar notificaciones del escritorio (falta notify-send).",
   "Left to rust. Press Space to start building again.": "Se quedó oxidándose. Pulsa Espacio para empezar a construir de nuevo.",
   "Press Space to start 25 minutes of focus while the arm builds.": "Pulsa Espacio para empezar 25 minutos de concentración mientras el brazo construye.",
+  "Sounds are off. Press M to turn them on.": "Los sonidos están apagados. Pulsa M para activarlos.",
   "The arm has finished. Take a five-minute break.": "El brazo terminó. Toma un descanso de cinco minutos.",
   "There's no folder to keep your garden in, so plants aren't being saved.": "No hay una carpeta donde guardar tu jardín, así que las plantas no se están guardando.",
   "Your garden couldn't be saved: %s. It will try again with the next plant.": "No se pudo guardar tu jardín: %s. Se intentará de nuevo con la siguiente planta.",

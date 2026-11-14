@@ -10,6 +10,9 @@ extends RefCounted
 ##                             (any case: Fog works too)
 ## AIRSHIP_GARDEN=/path.json   use another garden file
 ## AIRSHIP_LANGUAGE=de         speak this language, whatever Omarchy says
+## AIRSHIP_SOUND_TEST=train    play that sound (train or airship) three
+##                             seconds into the next session, whatever the hour
+## AIRSHIP_SOUND_VOLUME=0.5    scale the sounds' volume, 0 to 1
 
 const SESSION_SECONDS := 25 * 60
 const WEATHERS: Array[String] = ["clear", "cloudy", "rain", "snow", "fog"]
@@ -35,6 +38,13 @@ var theme_directory := ""
 var language_file := ""
 ## A pinned language code, or empty to follow Omarchy's.
 var language := ""
+## A sound to try out (Sounds.Kind), or -1.
+var sound_test := -1
+## The sounds' volume, 0 to 1.
+var sound_volume := 1.0
+## What Airship remembers between runs: XDG_CONFIG_HOME, else ~/.config,
+## then airship/settings.cfg. Empty if neither is set.
+var settings_file := ""
 
 
 static func from_environment() -> Options:
@@ -66,6 +76,15 @@ static func from_variables(lookup: Callable) -> Options:
 		options.theme_directory = home.path_join(".local/state/omarchy/current")
 		options.language_file = home.path_join(".config/omarchy/language")
 	var language_text := (lookup.call("AIRSHIP_LANGUAGE") as String).strip_edges()
+	options.sound_test = Sounds.named((lookup.call("AIRSHIP_SOUND_TEST") as String).strip_edges().to_lower())
+	var volume_text := (lookup.call("AIRSHIP_SOUND_VOLUME") as String).strip_edges()
+	if volume_text.is_valid_float():
+		options.sound_volume = clampf(volume_text.to_float(), 0.0, 1.0)
+	var config_home := lookup.call("XDG_CONFIG_HOME") as String
+	if not config_home.is_empty():
+		options.settings_file = config_home.path_join("airship/settings.cfg")
+	elif not home.is_empty():
+		options.settings_file = home.path_join(".config/airship/settings.cfg")
 	# Only a real language code pins the language; anything else follows
 	# Omarchy's.
 	if Catalog.code_in(language_text) == language_text:

@@ -6,6 +6,7 @@
   "Desktop notices can't be sent (notify-send is missing).": "Skrivebordsnotifikationer kan ikke sendes (notify-send mangler).",
   "Left to rust. Press Space to start building again.": "Overladt til rusten. Tryk på mellemrum for at begynde at bygge igen.",
   "Press Space to start 25 minutes of focus while the arm builds.": "Tryk på mellemrum for at starte 25 minutters fokus, mens armen bygger.",
+  "Sounds are off. Press M to turn them on.": "Lydene er slået fra. Tryk på M for at slå dem til.",
   "The arm has finished. Take a five-minute break.": "Armen er færdig. Hold fem minutters pause.",
   "There's no folder to keep your garden in, so plants aren't being saved.": "Der er ingen mappe at gemme din have i, så planter bliver ikke gemt.",
   "Your garden couldn't be saved: %s. It will try again with the next plant.": "Din have kunne ikke gemmes: %s. Der prøves igen med den næste plante.",

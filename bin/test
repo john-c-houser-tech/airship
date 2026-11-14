@@ -1,7 +1,7 @@
 #!/bin/sh
 # Airship's checks. Nothing here opens a window on the desktop: the first two
 # steps run headless, and the frame is drawn on a virtual X display.
-#   1. import the project
+#   1. import the project, and make the sounds (tools/make_sounds.gd)
 #   2. run the unit tests in tests/ headless
 #   3. run the main scene headless for a few frames, so every script parses
 #   4. draw a frame of a session under xvfb-run, save it and check the sky
@@ -27,16 +27,40 @@ run() { # name, then the command
     fi
     # A virtual X display can't change V-Sync; the desktop can. That warning
     # is the display's, not Airship's, so it alone is let through.
-    if grep -E 'ERROR|WARNING' "$out/$name.log" | grep -vxF "$vsync"; then
+    # Godot prints some problems without either word, such as text it
+    # couldn't decode.
+    if grep -E 'ERROR|WARNING|Unicode parsing error' "$out/$name.log" | grep -vxF "$vsync"; then
         echo "bin/test: $name: Godot reported the problems above"
         exit 1
     fi
 }
 
 run import godot --headless --path . --import
+# The distant sounds aren't committed: made here, as the package build makes
+# them, then imported.
+run sounds godot --headless --path . --script res://tools/make_sounds.gd
+run import-sounds godot --headless --path . --import
 # A test that never returns would hang the run; a minute is far more than they need.
 run unit timeout 60 godot --headless --path . --script res://tests/run.gd
 run parse godot --headless --path . --quit-after 5
+# The sounds, headless with silent audio: a train asked for, given up on
+# after it starts; it must start, then fade and stop. Then the same at
+# volume 0, which must play nothing (and say nothing wrong).
+sounds_run() { # name, volume, then what the log must say
+    name=$1
+    volume=$2
+    shift 2
+    run "$name" env AIRSHIP_SOUND_TEST=train AIRSHIP_SOUND_VOLUME="$volume" AIRSHIP_WEATHER=clear \
+        timeout 60 godot --headless --path . --audio-driver Dummy \
+        -- --build=0 --give-up-at=5 --quit-at=9 --log-sounds
+    if [ "$(grep '^sound:' "$out/$name.log" | tr '\n' ' ')" != "$*" ]; then
+        cat "$out/$name.log"
+        echo "bin/test: $name: expected the sounds to go: $*"
+        exit 1
+    fi
+}
+sounds_run sounds 1 "sound: train sound: stopped "
+sounds_run silent 0 ""
 # Throwaway prototypes: parsed and run briefly, never looked at.
 run break-task godot --headless --path . --quit-after 5 res://prototypes/break_task/break_task.tscn -- --sessions=3
 run airship-mockup godot --headless --path . --quit-after 5 res://prototypes/airship_mockup/airship_mockup.tscn -- --built=0.9
