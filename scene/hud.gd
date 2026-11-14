@@ -22,14 +22,14 @@ func _draw() -> void:
 		_shadowed(font, Vector2(0, 50), text, 34, HORIZONTAL_ALIGNMENT_RIGHT)
 	# Lines run longer in some languages: they wrap, and stack up from the
 	# bottom edge.
-	var top := _wrapped(font, SIZE - 16, _next_step(), 16, Color(1, 1, 1, 0.95))
+	var top := _wrapped(font, SIZE - 16, next_step(), 16, Color(1, 1, 1, 0.95))
 	var problem := _problem()
 	if not problem.is_empty():
 		_wrapped(font, top - 8, problem, 13, Color(1.0, 0.85, 0.6))
 
 
 ## What is happening, and the one thing to do next.
-func _next_step() -> String:
+func next_step() -> String:
 	match state:
 		Session.State.BUILDING:
 			return catalog.translate("Building. Stay with your work; press Space only to give up.")

@@ -12,10 +12,11 @@ extends Node2D
 ## quits; --check also checks the frame (bin/test's, at a pinned clear noon);
 ## --build=SECONDS starts a session that many seconds in; --give-up then gives
 ## it up; --give-up-at=SECONDS and --quit-at=SECONDS do so that long after
-## start, and --log-sounds says when a sound starts and stops (bin/test's
-## headless sound run). Pictures keep their plants in a throwaway garden,
-## never the real one. AIRSHIP_DATE, AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and
-## AIRSHIP_LANGUAGE the language.
+## start, --log-sounds says when a sound starts and stops, and --log-words
+## says the first line shown (bin/test's headless runs). Pictures keep their
+## plants in a throwaway garden, never the real one. AIRSHIP_DATE,
+## AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and AIRSHIP_LANGUAGE the
+## language.
 
 const Backdrop := preload("res://scene/backdrop.gd")
 const Machinery := preload("res://scene/machinery.gd")
@@ -63,10 +64,11 @@ var _frames := 0
 
 
 func _ready() -> void:
-	get_window().title = "Airship"
+	_plain_title.call_deferred()
 	var options := Options.from_environment()
 	var build := -1
 	var give_up := false
+	var log_words := false
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--shot="):
 			_shot_path = arg.trim_prefix("--shot=")
@@ -82,6 +84,8 @@ func _ready() -> void:
 			_quit_at = arg.trim_prefix("--quit-at=").to_float()
 		elif arg == "--log-sounds":
 			_log_sounds = true
+		elif arg == "--log-words":
+			log_words = true
 	if (build >= 0 or not _shot_path.is_empty()) and options.garden_path.is_empty():
 		# A picture's plants are make-believe: never in the real garden.
 		var throwaway := OS.get_user_data_dir().path_join("pictures")
@@ -110,6 +114,20 @@ func _ready() -> void:
 		if give_up:
 			app.give_up()
 	_show_everything()
+	if log_words:
+		print("says: " + _hud.next_step())
+
+
+## Arch's godot is the editor build, which marks the window's title
+## " (DEBUG)" each time Godot sets it (at start, and again when it applies its
+## language settings). Set on the display itself, after Godot, it stays plain.
+func _plain_title() -> void:
+	DisplayServer.window_set_title("Airship")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED:
+		_plain_title.call_deferred()
 
 
 func _process(delta: float) -> void:

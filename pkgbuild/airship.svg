@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- A placeholder until milestone 5's art: a cloth airship with brass bands. -->
+  <ellipse cx="30" cy="24" rx="25" ry="12" fill="#e6dcc4" stroke="#8a5a24" stroke-width="2"/>
+  <path d="M14 15 Q11 24 14 33 M22 12.5 Q19 24 22 35.5 M30 12 Q27 24 30 36 M38 12.5 Q35 24 38 35.5 M46 15 Q43 24 46 33" fill="none" stroke="#b07a34" stroke-width="1.6"/>
+  <path d="M55 24 L62 16 L62 32 Z" fill="#c9923f" stroke="#8a5a24" stroke-width="1.5"/>
+  <path d="M22 35 L20 42 M38 35 L40 42" stroke="#8a5a24" stroke-width="1.6"/>
+  <rect x="17" y="42" width="26" height="9" rx="2" fill="#6b4226" stroke="#c9923f" stroke-width="1.6"/>
+  <circle cx="23" cy="46.5" r="1.6" fill="#ffd27a"/>
+  <circle cx="30" cy="46.5" r="1.6" fill="#ffd27a"/>
+  <circle cx="37" cy="46.5" r="1.6" fill="#ffd27a"/>
+  <path d="M43 46.5 L48 46.5" stroke="#c9923f" stroke-width="1.6"/>
+  <path d="M48 42 L48 51" stroke="#8a5a24" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M16 42 Q12 38 9 40 Q6 42 8 45" fill="none" stroke="#d8d8d8" stroke-width="2.2" stroke-linecap="round" opacity="0.8"/>
+</svg>
