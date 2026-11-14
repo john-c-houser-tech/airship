@@ -76,12 +76,12 @@ static func _parse_date(text: String) -> Dictionary:
 	var year := _small_int(parts[0], 4)
 	var month := _small_int(parts[1], 2)
 	var day := _small_int(parts[2], 2)
-	if year < 1 or month < 1 or month > 12 or day < 1 or day > _days_in(year, month):
+	if year < 1 or month < 1 or month > 12 or day < 1 or day > days_in(year, month):
 		return {}
 	return {"year": year, "month": month, "day": day}
 
 
-static func _days_in(year: int, month: int) -> int:
+static func days_in(year: int, month: int) -> int:
 	if month == 2:
 		var leap := (year % 4 == 0 and year % 100 != 0) or year % 400 == 0
 		return 29 if leap else 28
