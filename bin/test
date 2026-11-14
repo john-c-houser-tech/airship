@@ -40,5 +40,7 @@ if ! command -v xvfb-run >/dev/null; then
     exit 1
 fi
 # Silent audio: CI has no sound device, and the tests never play sound aloud.
-run frame xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy -- --shot="$PWD/$out/frame.png"
+# No input method: the desktop's (XMODIFIERS, fcitx on Omarchy) isn't running
+# on the virtual display, and Godot warns when it can't reach it.
+run frame env -u XMODIFIERS xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy -- --shot="$PWD/$out/frame.png"
 echo "bin/test: passed; the frame is $out/frame.png"
