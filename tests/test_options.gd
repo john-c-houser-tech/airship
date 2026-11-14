@@ -55,6 +55,8 @@ func test_rejects_half_written_values() -> void:
 func test_data_directory_prefers_xdg() -> void:
 	same(_from({"HOME": "/home/a"}).data_directory, "/home/a/.local/share", "from HOME")
 	same(_from({"HOME": "/home/a", "XDG_DATA_HOME": "/data"}).data_directory, "/data", "from XDG_DATA_HOME")
+	same(_from({"HOME": "/home/a"}).theme_directory, "/home/a/.local/state/omarchy/current", "Omarchy's theme")
+	same(_from({}).theme_directory, "", "no theme without HOME")
 
 
 func test_knows_leap_years() -> void:

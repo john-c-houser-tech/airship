@@ -18,8 +18,12 @@ enum Event {
 	GARDEN_PROBLEM,
 	## The weather or the season changed enough to see.
 	WEATHER,
-	## The light moved on: the sun, the moon, the sky's colours.
+	## The light moved on: the sun, the moon, the sky's colours, or the
+	## accent they're warmed toward.
 	LIGHT,
+	## A plant was built to the end and kept, which the desktop should be
+	## told.
+	PLANT_BUILT,
 }
 
 ## The desktop's accent until the theme says otherwise (4d), as in Grove.
@@ -78,6 +82,15 @@ func advance(milliseconds: int) -> Array[int]:
 	return _session_changed(changes, moved)
 
 
+## Takes the desktop's accent, which warms dusk.
+func set_accent(colour: Color) -> Array[int]:
+	if colour == accent:
+		return []
+	accent = colour
+	daylight = Daylight.at(_day_of_year(), _hour(), accent)
+	return [Event.LIGHT]
+
+
 ## Reads the clock again for the light (the window does this every minute or
 ## so), unless AIRSHIP_TIME and AIRSHIP_DATE pin it.
 func refresh_light() -> Array[int]:
@@ -123,6 +136,8 @@ func _record() -> Array[int]:
 	var problem_before := garden.problem()
 	garden_change = garden.record(plant)
 	var events: Array[int] = [Event.GARDEN]
+	if built:
+		events.append(Event.PLANT_BUILT)
 	if garden.problem() != problem_before:
 		events.append(Event.GARDEN_PROBLEM)
 	return events
