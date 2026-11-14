@@ -5,7 +5,7 @@
 #   2. run the main scene headless for a few frames, so every script parses
 #   3. draw a frame under xvfb-run, save it and check two pixels
 # Godot keeps going after most errors, so any ERROR or WARNING line in its
-# output fails the run.
+# output fails the run, except the one below.
 set -eu
 cd "$(dirname "$0")/.."
 out=build/test
@@ -13,6 +13,8 @@ rm -rf "$out"
 mkdir -p "$out"
 # Godot's own files (logs, editor settings) go here, never in the home folder.
 export XDG_DATA_HOME="$PWD/$out/xdg/data" XDG_CONFIG_HOME="$PWD/$out/xdg/config" XDG_CACHE_HOME="$PWD/$out/xdg/cache"
+
+vsync='WARNING: Could not set V-Sync mode, as changing V-Sync mode is not supported by the graphics driver.'
 
 run() { # name, then the command
     name=$1
@@ -22,7 +24,9 @@ run() { # name, then the command
         echo "bin/test: $name failed"
         exit 1
     fi
-    if grep -E 'ERROR|WARNING' "$out/$name.log"; then
+    # A virtual X display can't change V-Sync; the desktop can. That warning
+    # is the display's, not Airship's, so it alone is let through.
+    if grep -E 'ERROR|WARNING' "$out/$name.log" | grep -vxF "$vsync"; then
         echo "bin/test: $name: Godot reported the problems above"
         exit 1
     fi
@@ -35,5 +39,6 @@ if ! command -v xvfb-run >/dev/null; then
     echo "bin/test: needs xvfb-run (sudo pacman -S xorg-server-xvfb) to draw a frame off the desktop"
     exit 1
 fi
-run frame xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 -- --shot="$PWD/$out/frame.png"
+# Silent audio: CI has no sound device, and the tests never play sound aloud.
+run frame xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy -- --shot="$PWD/$out/frame.png"
 echo "bin/test: passed; the frame is $out/frame.png"
