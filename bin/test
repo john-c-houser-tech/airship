@@ -2,8 +2,9 @@
 # Airship's checks. Nothing here opens a window on the desktop: the first two
 # steps run headless, and the frame is drawn on a virtual X display.
 #   1. import the project
-#   2. run the main scene headless for a few frames, so every script parses
-#   3. draw a frame under xvfb-run, save it and check two pixels
+#   2. run the unit tests in tests/ headless
+#   3. run the main scene headless for a few frames, so every script parses
+#   4. draw a frame under xvfb-run, save it and check two pixels
 # Godot keeps going after most errors, so any ERROR or WARNING line in its
 # output fails the run, except the one below.
 set -eu
@@ -33,6 +34,8 @@ run() { # name, then the command
 }
 
 run import godot --headless --path . --import
+# A test that never returns would hang the run; a minute is far more than they need.
+run unit timeout 60 godot --headless --path . --script res://tests/run.gd
 run parse godot --headless --path . --quit-after 5
 # Throwaway prototypes: parsed and run briefly, never looked at.
 run break-task godot --headless --path . --quit-after 5 res://prototypes/break_task/break_task.tscn -- --sessions=3

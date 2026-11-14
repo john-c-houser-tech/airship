@@ -10,6 +10,14 @@ archived), whose rules and tests are the spec for Airship's rules.
 
 - `project.godot`, `main.tscn`, `main.gd`: the project and its main scene.
   Keep the `.uid` files Godot writes beside scripts; commit them.
+- `core/` holds the rules, which draw nothing and run no timers: `app.gd`
+  ties them together and returns events saying what changed;
+  `options.gd` is the only reader of the environment (the `AIRSHIP_*`
+  test knobs). Grove's `src/*.rs` rules and their tests are the spec.
+- `tests/test_*.gd` are the unit tests: each extends `TestCase`
+  (`tests/test_case.gd`) and each `test_*` method is one test.
+  `tests/run.gd` runs them all and exits 1 on any failure.
+- `prototypes/` holds the throwaway tests of milestones 1 to 3.
 - `bin/test` runs every check. It never opens a window on the desktop: it runs
   headless, and draws frames under `xvfb-run` (package `xorg-server-xvfb`).
   Any ERROR or WARNING line from Godot fails it.
