@@ -27,12 +27,13 @@ jobs:
     steps:
       # Omarchy's stable mirror lags upstream Arch; -Syuu also steps back
       # anything in the image that is newer than the mirror. The keyring goes
-      # first, so a key newer than the image is known.
+      # first, so a key newer than the image is known. Godot loads fontconfig
+      # at start-up and logs an ERROR without it; the desktop has it already.
       - name: Packages
         run: |
           echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
           pacman -Sy --noconfirm archlinux-keyring
-          pacman -Suu --noconfirm --needed git godot mesa xorg-server-xvfb xorg-xauth
+          pacman -Suu --noconfirm --needed git godot fontconfig ttf-dejavu mesa xorg-server-xvfb xorg-xauth
           pacman -Q godot mesa
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
