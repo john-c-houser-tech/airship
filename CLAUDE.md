@@ -29,6 +29,11 @@ archived), whose rules and tests are the spec for Airship's rules.
 - `tests/test_*.gd` are the unit tests: each extends `TestCase`
   (`tests/test_case.gd`) and each `test_*` method is one test.
   `tests/run.gd` runs them all and exits 1 on any failure.
+- `tools/make_sounds.gd` synthesizes the two distant sounds (a steam train
+  at night, an airship by day) into `sounds/`, which is never committed:
+  each remake would stay in git's history for good. `bin/make-sounds` runs
+  it (once, to hear sounds when running from the repo); `bin/test` and the
+  package build run it too. Without the files Airship is simply quiet.
 - `prototypes/` holds the throwaway tests of milestones 1 to 3.
 - `bin/test` runs every check. It never opens a window on the desktop: it runs
   headless, and draws frames under `xvfb-run` (package `xorg-server-xvfb`).

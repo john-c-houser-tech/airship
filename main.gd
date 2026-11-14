@@ -11,8 +11,10 @@ extends Node2D
 ## Flags after `--`, for checks and pictures: --shot=PATH saves a frame and
 ## quits; --check also checks the frame (bin/test's, at a pinned clear noon);
 ## --build=SECONDS starts a session that many seconds in; --give-up then gives
-## it up. Pictures keep their plants in a throwaway garden, never the real
-## one. AIRSHIP_DATE, AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and
+## it up; --give-up-at=SECONDS and --quit-at=SECONDS do so that long after
+## start, and --log-sounds says when a sound starts and stops (bin/test's
+## headless sound run). Pictures keep their plants in a throwaway garden,
+## never the real one. AIRSHIP_DATE, AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and
 ## AIRSHIP_LANGUAGE the language.
 
 const Backdrop := preload("res://scene/backdrop.gd")
@@ -45,11 +47,18 @@ var _machinery: Machinery
 var _workshop: Workshop
 var _weather: WeatherLayer
 var _hud: Hud
+var _player: AudioStreamPlayer
+var _fade: Tween
 var _carry_ms := 0.0
 var _since_light_ms := 0.0
 var _since_theme_ms := 0.0
 var _shot_path := ""
 var _check := false
+var _give_up_at := -1.0
+var _quit_at := -1.0
+var _log_sounds := false
+var _alive_ms := 0.0
+var _was_playing := false
 var _frames := 0
 
 
@@ -67,6 +76,12 @@ func _ready() -> void:
 			build = arg.trim_prefix("--build=").to_int()
 		elif arg == "--give-up":
 			give_up = true
+		elif arg.begins_with("--give-up-at="):
+			_give_up_at = arg.trim_prefix("--give-up-at=").to_float()
+		elif arg.begins_with("--quit-at="):
+			_quit_at = arg.trim_prefix("--quit-at=").to_float()
+		elif arg == "--log-sounds":
+			_log_sounds = true
 	if (build >= 0 or not _shot_path.is_empty()) and options.garden_path.is_empty():
 		# A picture's plants are make-believe: never in the real garden.
 		var throwaway := OS.get_user_data_dir().path_join("pictures")
@@ -85,6 +100,8 @@ func _ready() -> void:
 	_hud = Hud.new()
 	for layer: Node2D in [_backdrop, _machinery, _workshop, _weather, _hud]:
 		add_child(layer)
+	_player = AudioStreamPlayer.new()
+	add_child(_player)
 	_workshop.time_scale = app.session.seconds() / Workshop.BuildPlan.SESSION
 	_hud.notices_work = notifier.working
 	if build >= 0:
@@ -118,6 +135,15 @@ func _process(delta: float) -> void:
 	if app.session.state() == Session.State.BUILDING:
 		_workshop.show_session(Session.State.BUILDING, app.session.progress())
 	_pace()
+	_alive_ms += delta * 1000.0
+	if _give_up_at >= 0.0 and _alive_ms >= _give_up_at * 1000.0:
+		_give_up_at = -1.0
+		_heard(app.give_up())
+	if _log_sounds and _player.playing != _was_playing:
+		_was_playing = _player.playing
+		print("sound: %s" % (Sounds.NAMES[app.sound] if _was_playing else "stopped"))
+	if _quit_at >= 0.0 and _alive_ms >= _quit_at * 1000.0:
+		get_tree().quit()
 	if not _shot_path.is_empty():
 		_frames += 1
 		if _frames >= SHOT_FRAMES:
@@ -126,9 +152,14 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo or key.keycode != KEY_SPACE:
+	if key == null or not key.pressed or key.echo:
 		return
 	if key.ctrl_pressed or key.alt_pressed or key.meta_pressed or key.shift_pressed:
+		return
+	if key.keycode == KEY_M:
+		_heard(app.set_muted(not app.muted))
+		return
+	if key.keycode != KEY_SPACE:
 		return
 	if app.session.state() == Session.State.BUILDING:
 		_heard(app.give_up())
@@ -155,6 +186,16 @@ func _heard(events: Array[int]) -> void:
 			App.Event.LANGUAGE:
 				_hud.catalog = app.catalog
 				_hud.queue_redraw()
+			App.Event.SOUND:
+				if not app.muted and _shot_path.is_empty():
+					_play(app.sound)
+			App.Event.SOUNDS_ENDED:
+				_fade_out(2.0)
+			App.Event.MUTED:
+				_hud.muted = app.muted
+				_hud.queue_redraw()
+				if app.muted:
+					_fade_out(0.3)
 			App.Event.PLANT_BUILT:
 				if _shot_path.is_empty():
 					notifier.send(app.say("Built"), app.say("The arm has finished. Take a five-minute break."))
@@ -164,6 +205,7 @@ func _heard(events: Array[int]) -> void:
 
 func _show_everything() -> void:
 	_heard([App.Event.STATE, App.Event.GARDEN_PROBLEM, App.Event.LANGUAGE])
+	_hud.muted = app.muted
 	_show_sky()
 	_pace()
 
@@ -175,6 +217,33 @@ func _show_sky() -> void:
 	_weather.conditions = app.weather.now()
 	_backdrop.queue_redraw()
 	_weather.queue_redraw()
+
+
+## Plays a distant sound, made ahead of time by bin/make-sounds (the package
+## build and bin/test run it). Without it, Airship is simply quiet.
+func _play(kind: Sounds.Kind) -> void:
+	# Silent, missing, or one already playing: a sound that came due behind
+	# another (sounds pile up after the laptop wakes) is let go, as in Grove.
+	if app.volume(kind) <= 0.0 or not ResourceLoader.exists(Sounds.FILES[kind]):
+		return
+	if _player.playing and (_fade == null or not _fade.is_running()):
+		return
+	if _fade != null:
+		_fade.kill()
+	_player.stream = load(Sounds.FILES[kind]) as AudioStream
+	_player.volume_db = linear_to_db(app.volume(kind))
+	_player.play()
+
+
+## Fades out a sound still playing, and stops it.
+func _fade_out(seconds: float) -> void:
+	if not _player.playing:
+		return
+	if _fade != null:
+		_fade.kill()
+	_fade = create_tween()
+	_fade.tween_property(_player, "volume_db", -60.0, seconds)
+	_fade.tween_callback(_player.stop)
 
 
 ## Draws as often as what's on screen needs.

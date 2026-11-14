@@ -10,6 +10,7 @@ var remaining := 0
 var garden_problem := Garden.Problem.NONE
 var save_error := ""
 var notices_work := true
+var muted := false
 ## Says each line in the current language.
 var catalog := Catalog.new("en")
 
@@ -56,6 +57,8 @@ func _problem() -> String:
 				% catalog.translate(save_error)
 	if not notices_work:
 		return catalog.translate("Desktop notices can't be sent (notify-send is missing).")
+	if muted:
+		return catalog.translate("Sounds are off. Press M to turn them on.")
 	return ""
 
 

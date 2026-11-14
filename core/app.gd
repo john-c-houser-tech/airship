@@ -4,7 +4,6 @@ extends RefCounted
 ## calls in (a key pressed, time passed) and hears back a list of events
 ## saying what changed; App itself runs no timers and draws nothing.
 ##
-## It grows with milestone 4: the sounds join it in a later PR.
 
 ## Something that changed, for the window to hear about.
 enum Event {
@@ -26,6 +25,12 @@ enum Event {
 	PLANT_BUILT,
 	## The language changed, so everything said is said again.
 	LANGUAGE,
+	## A distant sound is due now: `sound` says which.
+	SOUND,
+	## The session's sounds are over: one still playing fades out.
+	SOUNDS_ENDED,
+	## The sounds were muted or unmuted.
+	MUTED,
 }
 
 ## The desktop's accent until the theme says otherwise (4d), as in Grove.
@@ -38,6 +43,11 @@ var weather: Weather
 var daylight: Daylight
 ## The words in the language Omarchy (or AIRSHIP_LANGUAGE) picked.
 var catalog: Catalog
+## The sound last due (Sounds.Kind).
+var sound := Sounds.Kind.TRAIN
+var muted := false
+# This session's sounds, or null when none are to be heard.
+var _sound_plan: Sounds.Plan
 ## The colour dusk is warmed toward.
 var accent := DEFAULT_ACCENT
 ## How the garden's plants last changed.
@@ -56,6 +66,7 @@ func _init(options_: Options) -> void:
 		path = Garden.default_path(options.data_directory)
 	garden = Garden.new(path)
 	catalog = Catalog.new(options.language if not options.language.is_empty() else "en")
+	muted = Settings.muted(options.settings_file)
 	weather = Weather.new(Weather.kind_named(options.weather))
 	# The idle window has weather too, in today's season: seeded by the date,
 	# so the core stays a function of its inputs.
@@ -70,6 +81,9 @@ func start(blueprint: int, plant_seed: int) -> Array[int]:
 	var changes := session.start(blueprint, plant_seed)
 	if changes.state:
 		weather.begin(plant_seed, _month())
+		# Its own numbers from the seed, so the sounds don't follow the weather.
+		_sound_plan = Sounds.roll(Random.new(plant_seed ^ 0x5_0D5), options.sound_test,
+			Sounds.period_of(daylight), session.seconds())
 	return _session_changed(changes, changes.state)
 
 
@@ -81,10 +95,33 @@ func give_up() -> Array[int]:
 ## Moves the clock on by real time that has passed.
 func advance(milliseconds: int) -> Array[int]:
 	var changes := session.advance(milliseconds)
+	var events: Array[int] = []
+	# A sound due by now starts, if the sky still suits it.
+	if _sound_plan != null and session.state() == Session.State.BUILDING:
+		var due := _sound_plan.due(session.elapsed_seconds(), Sounds.period_of(daylight),
+			Sounds.flight_weather(weather.now()))
+		if due >= 0:
+			sound = due as Sounds.Kind
+			events.append(Event.SOUND)
 	# The weather moves before the plant is kept, so it is kept with the
 	# weather it ended in.
 	var moved := changes.progress and weather.set_progress(session.progress())
-	return _session_changed(changes, moved)
+	events.append_array(_session_changed(changes, moved))
+	return events
+
+
+## Mutes or unmutes the sounds, and remembers it for the next run.
+func set_muted(value: bool) -> Array[int]:
+	if value == muted:
+		return []
+	muted = value
+	Settings.remember_muted(options.settings_file, muted)
+	return [Event.MUTED]
+
+
+## How loud a sound is played, 0 to 1.
+func volume(kind: Sounds.Kind) -> float:
+	return Sounds.VOLUMES[kind] * options.sound_volume
 
 
 ## Takes the desktop's language, unless AIRSHIP_LANGUAGE pins one.
@@ -129,6 +166,10 @@ func _session_changed(changes: Session.Changes, weather_moved := false) -> Array
 		events.append(Event.PROGRESS)
 	if weather_moved:
 		events.append(Event.WEATHER)
+	if changes.state and session.state() != Session.State.BUILDING and _sound_plan != null:
+		# Given up or finished: a sound under way fades, any to come are dropped.
+		_sound_plan = null
+		events.append(Event.SOUNDS_ENDED)
 	if changes.state and session.state() in [Session.State.BUILT, Session.State.RUSTED]:
 		# A shortened test session (AIRSHIP_SECONDS) isn't kept unless a
 		# garden is given, so trying Airship out never adds make-believe
