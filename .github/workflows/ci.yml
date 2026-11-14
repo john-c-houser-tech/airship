@@ -1,0 +1,74 @@
+# CI: bin/test (import, a headless run that parses every script, and a frame
+# drawn on a virtual X display and checked) in an Arch Linux container that
+# installs from Omarchy's stable mirror, the one the desktop uses, so Godot is
+# the version Airship is built with there. No secrets.
+# The ruleset on main requires the one "CI result" check; keep that job's name.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: archlinux:latest
+    steps:
+      # Omarchy's stable mirror lags upstream Arch; -Syuu also steps back
+      # anything in the image that is newer than the mirror. The keyring goes
+      # first, so a key newer than the image is known.
+      - name: Packages
+        run: |
+          echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Suu --noconfirm --needed git godot mesa xorg-server-xvfb xorg-xauth
+          pacman -Q godot mesa
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false  # nothing after this needs git access
+      # The container runs as root; the checks run as a normal user, as they
+      # do on a developer's machine.
+      - name: A user to run as
+        run: |
+          useradd -m ci
+          chown -R ci "$GITHUB_WORKSPACE"
+      - name: Tests
+        run: su ci -c "cd '$GITHUB_WORKSPACE' && bin/test"
+      - name: Keep the frame
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frame
+          path: build/test/
+          if-no-files-found: ignore
+
+  # The one check main's ruleset requires.
+  result:
+    name: CI result
+    if: always()
+    needs: [check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) exit 1 ;;
+            esac
+          done
