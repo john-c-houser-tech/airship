@@ -9,6 +9,7 @@ extends RefCounted
 ## AIRSHIP_WEATHER=fog         pin the weather: clear, cloudy, rain, snow or fog
 ##                             (any case: Fog works too)
 ## AIRSHIP_GARDEN=/path.json   use another garden file
+## AIRSHIP_LANGUAGE=de         speak this language, whatever Omarchy says
 
 const SESSION_SECONDS := 25 * 60
 const WEATHERS: Array[String] = ["clear", "cloudy", "rain", "snow", "fog"]
@@ -29,6 +30,11 @@ var data_directory := ""
 ## Omarchy's current theme (~/.local/state/omarchy/current), for the accent
 ## colour; empty if HOME isn't set.
 var theme_directory := ""
+## Omarchy's language file (~/.config/omarchy/language); empty if HOME isn't
+## set.
+var language_file := ""
+## A pinned language code, or empty to follow Omarchy's.
+var language := ""
 
 
 static func from_environment() -> Options:
@@ -58,6 +64,12 @@ static func from_variables(lookup: Callable) -> Options:
 		options.data_directory = home.path_join(".local/share")
 	if not home.is_empty():
 		options.theme_directory = home.path_join(".local/state/omarchy/current")
+		options.language_file = home.path_join(".config/omarchy/language")
+	var language_text := (lookup.call("AIRSHIP_LANGUAGE") as String).strip_edges()
+	# Only a real language code pins the language; anything else follows
+	# Omarchy's.
+	if Catalog.code_in(language_text) == language_text:
+		options.language = language_text
 	return options
 
 

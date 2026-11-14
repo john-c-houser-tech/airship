@@ -1,0 +1,17 @@
+{
+  "Another Airship is saving the garden; this plant will be saved with the next.": "別のAirshipが庭を保存しています。この植物は次の植物と一緒に保存されます。",
+  "Building. Stay with your work; press Space only to give up.": "組み立て中です。作業を続けましょう。やめるときだけスペースを押してください。",
+  "Built": "完成",
+  "Built. Take a five-minute break, then press Space to build again.": "完成しました。5分休んでから、スペースでまた組み立てましょう。",
+  "Desktop notices can't be sent (notify-send is missing).": "デスクトップ通知を送れません（notify-send がありません）。",
+  "Left to rust. Press Space to start building again.": "錆びついてしまいました。スペースでもう一度組み立てを始めます。",
+  "Press Space to start 25 minutes of focus while the arm builds.": "スペースを押すと25分間の集中が始まり、そのあいだアームが組み立てます。",
+  "The arm has finished. Take a five-minute break.": "アームの作業が終わりました。5分休みましょう。",
+  "There's no folder to keep your garden in, so plants aren't being saved.": "庭を保存するフォルダーがないため、植物は保存されていません。",
+  "Your garden couldn't be saved: %s. It will try again with the next plant.": "庭を保存できませんでした：%s。次の植物でもう一度試します。",
+  "Your garden file can't be opened, so new plants aren't being saved.": "庭のファイルを開けないため、新しい植物は保存されていません。",
+  "Your garden file can't be read, so it's left as it is and new plants aren't saved.": "庭のファイルを読めないため、そのままにしてあります。新しい植物は保存されません。",
+  "nothing can be written beside the garden (is the disk full, or the folder read-only?)": "庭のファイルと同じフォルダーに書き込めません（ディスクがいっぱいか、フォルダーが読み取り専用ですか？）",
+  "the garden couldn't be written whole (is the disk full?)": "庭を最後まで書き込めませんでした（ディスクがいっぱいですか？）",
+  "the plant's values are out of range": "植物の値が範囲外です"
+}

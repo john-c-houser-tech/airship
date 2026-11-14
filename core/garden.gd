@@ -42,6 +42,12 @@ const OUTCOME_NAMES: Array[String] = ["built", "rusted"]
 const LOCK_WAIT_MS := 5000
 ## A lock folder older than this was left by a program that died holding it.
 const STALE_LOCK_SECONDS := 60
+## The garden's own reasons a save failed, in English; the window translates
+## them (i18n/), while the system's own words come through as they are.
+const OUT_OF_RANGE := "the plant's values are out of range"
+const NOT_WHOLE := "the garden couldn't be written whole (is the disk full?)"
+const NOTHING_WRITABLE := "nothing can be written beside the garden (is the disk full, or the folder read-only?)"
+const REASONS: Array[String] = [OUT_OF_RANGE, NOT_WHOLE, NOTHING_WRITABLE]
 const WHEN_PATTERN := "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})$"
 
 
@@ -146,7 +152,7 @@ func record(plant: Plant) -> Change:
 	# A plant the file couldn't read back would make the whole garden
 	# unreadable, so one with values out of range is shown, never saved.
 	if _plant_from(_plant_to(plant)) == null:
-		save_error = "the plant's values are out of range"
+		save_error = OUT_OF_RANGE
 		return _keep_unsaved(plant, Problem.CANNOT_SAVE)
 	if _read_only:
 		# A garden kept nowhere says so; one whose file couldn't be read has
@@ -166,7 +172,7 @@ func record(plant: Plant) -> Change:
 		_unsaved.push_front(plant)
 		if locked == ERR_BUSY:
 			return _keep_unsaved(plant, Problem.BUSY)
-		save_error = "nothing can be written beside the garden (is the disk full, or the folder read-only?)"
+		save_error = NOTHING_WRITABLE
 		return _keep_unsaved(plant, Problem.CANNOT_SAVE)
 	var found: Variant = _read()
 	if not found is Array:
@@ -260,7 +266,7 @@ func _save() -> String:
 	# if it is whole, or an empty file would replace the garden.
 	if wrote == OK and FileAccess.get_file_as_string(beside) != text:
 		DirAccess.remove_absolute(beside)
-		return "the garden couldn't be written whole (is the disk full?)"
+		return NOT_WHOLE
 	if wrote == OK and FileAccess.file_exists(target):
 		# A garden kept private stays private.
 		wrote = FileAccess.set_unix_permissions(beside, FileAccess.get_unix_permissions(target))

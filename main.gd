@@ -12,7 +12,8 @@ extends Node2D
 ## quits; --check also checks the frame (bin/test's, at a pinned clear noon);
 ## --build=SECONDS starts a session that many seconds in; --give-up then gives
 ## it up. Pictures keep their plants in a throwaway garden, never the real
-## one. AIRSHIP_DATE, AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky.
+## one. AIRSHIP_DATE, AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and
+## AIRSHIP_LANGUAGE the language.
 
 const Backdrop := preload("res://scene/backdrop.gd")
 const Machinery := preload("res://scene/machinery.gd")
@@ -36,6 +37,7 @@ const SHOT_FRAMES := 4
 
 var app: App
 var theme: DesktopTheme
+var language: DesktopLanguage
 var notifier: Notifier
 
 var _backdrop: Backdrop
@@ -73,6 +75,8 @@ func _ready() -> void:
 	app = App.new(options)
 	theme = DesktopTheme.new(options.theme_directory)
 	app.set_accent(theme.accent)
+	language = DesktopLanguage.new(options.language_file)
+	app.set_language(language.code)
 	notifier = Notifier.new()
 	_backdrop = Backdrop.new()
 	_machinery = Machinery.new()
@@ -106,6 +110,8 @@ func _process(delta: float) -> void:
 		_since_theme_ms = 0.0
 		if theme.reload():
 			events.append_array(app.set_accent(theme.accent))
+		if language.reload():
+			events.append_array(app.set_language(language.code))
 	_heard(events)
 	# While building, the arm follows the clock every frame (as often as the
 	# pace allows), so it sets off again the moment its rest is over.
@@ -146,15 +152,18 @@ func _heard(events: Array[int]) -> void:
 				_hud.garden_problem = app.garden.problem()
 				_hud.save_error = app.garden.save_error
 				_hud.queue_redraw()
+			App.Event.LANGUAGE:
+				_hud.catalog = app.catalog
+				_hud.queue_redraw()
 			App.Event.PLANT_BUILT:
 				if _shot_path.is_empty():
-					notifier.send("Built", "The arm has finished. Take a five-minute break.")
+					notifier.send(app.say("Built"), app.say("The arm has finished. Take a five-minute break."))
 					_hud.notices_work = notifier.working
 					_hud.queue_redraw()
 
 
 func _show_everything() -> void:
-	_heard([App.Event.STATE, App.Event.GARDEN_PROBLEM])
+	_heard([App.Event.STATE, App.Event.GARDEN_PROBLEM, App.Event.LANGUAGE])
 	_show_sky()
 	_pace()
 

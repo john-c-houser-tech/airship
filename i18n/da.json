@@ -1,0 +1,17 @@
+{
+  "Another Airship is saving the garden; this plant will be saved with the next.": "Et andet Airship gemmer haven; denne plante bliver gemt sammen med den næste.",
+  "Building. Stay with your work; press Space only to give up.": "Bygger. Bliv ved med at arbejde; tryk kun på mellemrum for at give op.",
+  "Built": "Bygget",
+  "Built. Take a five-minute break, then press Space to build again.": "Bygget. Hold fem minutters pause, og tryk så på mellemrum for at bygge igen.",
+  "Desktop notices can't be sent (notify-send is missing).": "Skrivebordsnotifikationer kan ikke sendes (notify-send mangler).",
+  "Left to rust. Press Space to start building again.": "Overladt til rusten. Tryk på mellemrum for at begynde at bygge igen.",
+  "Press Space to start 25 minutes of focus while the arm builds.": "Tryk på mellemrum for at starte 25 minutters fokus, mens armen bygger.",
+  "The arm has finished. Take a five-minute break.": "Armen er færdig. Hold fem minutters pause.",
+  "There's no folder to keep your garden in, so plants aren't being saved.": "Der er ingen mappe at gemme din have i, så planter bliver ikke gemt.",
+  "Your garden couldn't be saved: %s. It will try again with the next plant.": "Din have kunne ikke gemmes: %s. Der prøves igen med den næste plante.",
+  "Your garden file can't be opened, so new plants aren't being saved.": "Din havefil kan ikke åbnes, så nye planter bliver ikke gemt.",
+  "Your garden file can't be read, so it's left as it is and new plants aren't saved.": "Din havefil kan ikke læses, så den får lov at være, og nye planter bliver ikke gemt.",
+  "nothing can be written beside the garden (is the disk full, or the folder read-only?)": "der kan ikke skrives noget ved siden af haven (er disken fuld, eller er mappen skrivebeskyttet?)",
+  "the garden couldn't be written whole (is the disk full?)": "haven kunne ikke skrives helt (er disken fuld?)",
+  "the plant's values are out of range": "plantens værdier ligger uden for det tilladte område"
+}

@@ -57,6 +57,13 @@ func test_data_directory_prefers_xdg() -> void:
 	same(_from({"HOME": "/home/a", "XDG_DATA_HOME": "/data"}).data_directory, "/data", "from XDG_DATA_HOME")
 	same(_from({"HOME": "/home/a"}).theme_directory, "/home/a/.local/state/omarchy/current", "Omarchy's theme")
 	same(_from({}).theme_directory, "", "no theme without HOME")
+	same(_from({"HOME": "/home/a"}).language_file, "/home/a/.config/omarchy/language", "Omarchy's language")
+
+
+func test_a_pinned_language_must_be_a_language_code() -> void:
+	same(_from({"AIRSHIP_LANGUAGE": " pt-BR "}).language, "pt-BR", "a code")
+	same(_from({"AIRSHIP_LANGUAGE": "Klingon"}).language, "", "anything else follows Omarchy")
+	same(_from({}).language, "", "unset follows Omarchy")
 
 
 func test_knows_leap_years() -> void:
