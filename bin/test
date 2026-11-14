@@ -37,6 +37,7 @@ run parse godot --headless --path . --quit-after 5
 # Throwaway prototypes: parsed and run briefly, never looked at.
 run break-task godot --headless --path . --quit-after 5 res://prototypes/break_task/break_task.tscn -- --sessions=3
 run airship-mockup godot --headless --path . --quit-after 5 res://prototypes/airship_mockup/airship_mockup.tscn -- --built=0.9
+run arm-steam godot --headless --path . --quit-after 5 res://prototypes/arm_steam/arm_steam.tscn -- --minute=17
 
 if ! command -v xvfb-run >/dev/null; then
     echo "bin/test: needs xvfb-run (sudo pacman -S xorg-server-xvfb) to draw a frame off the desktop"

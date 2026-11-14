@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Measures a program on the desktop: how long it takes to show its first
+# frame (if it prints a line starting "first-frame"), then its CPU use and
+# memory over a stretch of time while it runs. For gate C: run it on the arm
+# prototype and on Grove 0.10.0 during a session, and compare.
+#
+# Usage: bin/measure SECONDS -- COMMAND [ARGS...]
+#   bin/measure 60 -- godot --path . res://prototypes/arm_steam/arm_steam.tscn
+#   bin/measure 60 -- ~/Projects/grove/build/grove     (press Space to start a session)
+#
+# This one opens a window on the desktop: it's for John to run, not for
+# agents or CI.
+set -euo pipefail
+
+if [[ $# -lt 3 || $2 != "--" ]]; then
+    sed -n '7,9p' "$0"
+    exit 2
+fi
+seconds=$1
+shift 2
+
+log=$(mktemp)
+trap 'kill "$pid" 2>/dev/null || true; rm -f "$log"' EXIT
+
+start=$(date +%s%N)
+"$@" >"$log" 2>&1 &
+pid=$!
+
+first=""
+for _ in $(seq 300); do
+    if grep -q '^first-frame' "$log"; then
+        first=$((($(date +%s%N) - start) / 1000000))
+        break
+    fi
+    kill -0 "$pid" 2>/dev/null || { echo "measure: the program quit:"; cat "$log"; exit 1; }
+    sleep 0.1
+done
+
+warmup=${MEASURE_WARMUP:-15}
+echo "measure: warming up for $warmup s (start a session now if the program needs one)"
+sleep "$warmup"
+
+# The program and every process under it, so a wrapper script can't hide it.
+tree() {
+    local p=$1
+    echo "$p"
+    for c in $(pgrep -P "$p" || true); do tree "$c"; done
+}
+ticks() {
+    local sum=0 t
+    for p in $(tree "$pid"); do
+        t=$(awk '{print $14 + $15}' "/proc/$p/stat" 2>/dev/null || echo 0)
+        sum=$((sum + t))
+    done
+    echo "$sum"
+}
+hz=$(getconf CLK_TCK)
+before=$(ticks)
+echo "measure: measuring for $seconds s; leave the window alone"
+sleep "$seconds"
+if ! kill -0 "$pid" 2>/dev/null; then
+    echo "measure: the program closed before the $seconds s were up, so there are no numbers; run it again and leave the window open"
+    exit 1
+fi
+after=$(ticks)
+rss=0
+for p in $(tree "$pid"); do
+    rss=$((rss + $(awk '/^VmRSS/ {print $2}' "/proc/$p/status" 2>/dev/null || echo 0)))
+done
+
+cpu=$(awk -v d=$((after - before)) -v hz="$hz" -v s="$seconds" 'BEGIN {printf "%.1f", d / hz / s * 100}')
+echo
+echo "command:     $*"
+if [[ -n $first ]]; then
+    echo "first frame: $first ms after launch"
+fi
+echo "CPU:         $cpu% of one core, averaged over $seconds s"
+echo "memory:      $((rss / 1024)) MB resident"
