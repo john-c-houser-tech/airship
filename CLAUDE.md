@@ -22,7 +22,7 @@ archived), whose rules and tests are the spec for Airship's rules.
 - `scene/` draws. `hangar.gd` is the scene decided at gate B and after the
   milestone 5 mock-ups: inside the hangar beside the airship's front third,
   looking out the big door. It takes the daylight, the weather, the
-  airship's progress (`App.airship_progress()`, 40 built plants a ship) and
+  airship's progress (`App.airship_progress()`, from the parts the garden has made) and
   the garden's count from the core, and draws only when they change, into
   two cached pictures (replaying it each frame cost 69% of a core): the
   outside (sky, land, railway) and the inside (the garden, the hangar and
@@ -38,7 +38,10 @@ archived), whose rules and tests are the spec for Airship's rules.
 - `core/` holds the rules, which draw nothing and run no timers: `app.gd`
   ties them together and returns events saying what changed;
   `options.gd` is the only reader of the environment (the `AIRSHIP_*`
-  test knobs). Grove's `src/*.rs` rules and their tests are the spec.
+  test knobs). `parts.gd` is the economy: five kinds of plant by blueprint,
+  each making its part once per later completed session, and the parts an
+  airship needs; all worked out from the garden's plants, nothing saved.
+  Grove's `src/*.rs` rules and their tests are the spec.
 - `tests/test_*.gd` are the unit tests: each extends `TestCase`
   (`tests/test_case.gd`) and each `test_*` method is one test.
   `tests/run.gd` runs them all and exits 1 on any failure.

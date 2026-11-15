@@ -205,26 +205,18 @@ func test_a_rusted_plant_tells_the_desktop_nothing() -> void:
 	check(not App.Event.PLANT_BUILT in app.give_up(), "no notice for giving up")
 
 
-func test_each_built_plant_builds_a_fortieth_of_the_airship() -> void:
+func test_the_airship_grows_from_the_parts_the_garden_makes() -> void:
 	var app := _app(25 * 60, "airship")
 	same(app.airship_progress(), 0.0, "an empty garden")
-	app.start(1, 1)
+	same(app.next_blueprint(), Parts.Kind.GIRDER_REED, "the frame's struts are wanted first")
+	app.start(app.next_blueprint(), 1)
 	app.advance(25 * 60 * 1000)
-	same(app.airship_progress(), 1.0 / 40.0, "one built plant")
-	app.start(1, 2)
+	same(app.airship_progress(), 0.0, "a new plant has made nothing yet")
+	app.start(app.next_blueprint(), 2)
 	app.advance(60_000)
 	app.give_up()
-	same(app.airship_progress(), 1.0 / 40.0, "a rusted plant adds nothing")
-	# One built already, by the session above: 39 more make forty.
-	for k in 39:
-		var plant := Garden.Plant.new()
-		plant.when = "2026-11-14T10:00:00"
-		plant.progress = 1.0
-		app.garden.record(plant)
-	same(app.airship_progress(), 1.0, "exactly forty built plants make a whole airship")
-	for k in 6:
-		var plant := Garden.Plant.new()
-		plant.when = "2026-11-14T10:00:00"
-		plant.progress = 1.0
-		app.garden.record(plant)
-	same(app.airship_progress(), 1.0, "never past a whole airship")
+	same(app.airship_progress(), 0.0, "a session given up ripens nothing")
+	app.start(app.next_blueprint(), 3)
+	app.advance(25 * 60 * 1000)
+	same(app.airship_progress(), 1.0 / 70.0, "the first plant made a strut in the second full session")
+	same(Parts.made(app.garden.plants()), [0, 0, 1, 0, 0] as Array[int], "the oldest plant made it, not the newest")

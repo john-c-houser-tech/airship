@@ -236,7 +236,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if app.session.state() == Session.State.BUILDING:
 		_heard(app.give_up())
 	else:
-		_heard(app.start(0, randi_range(1, Session.SEED_LIMIT)))
+		_heard(app.start(app.next_blueprint(), randi_range(1, Session.SEED_LIMIT)))
 	_pace()
 
 
@@ -302,8 +302,9 @@ func _show_sky() -> void:
 	var moving := app.session.state() == Session.State.BUILDING
 	var now := app.weather.now()
 	_falling.show_weather(now.rain, now.snow, moving, 0.35 + 0.65 * app.daylight.ambient)
-	_outside.show_world(app.daylight, now, app.airship_progress(), plants, moving)
-	if _hangar.show_world(app.daylight, now, app.airship_progress(), plants, moving):
+	var built := app.airship_progress()
+	_outside.show_world(app.daylight, now, built, plants, moving)
+	if _hangar.show_world(app.daylight, now, built, plants, moving):
 		for paint: SubViewport in _paints:
 			paint.render_target_update_mode = SubViewport.UPDATE_ONCE
 		_machinery.queue_redraw()

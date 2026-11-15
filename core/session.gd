@@ -1,7 +1,8 @@
 class_name Session
 extends RefCounted
-## One focus session at a time. The arm builds a plant from a blueprint; the
-## plant on screen is a pure function of `progress`, `blueprint` and `seed`,
+## One focus session at a time. The arm builds a plant from a blueprint (its
+## kind: core/parts.gd; the scene draws every kind alike until milestone 6b);
+## the plant on screen is a pure function of `progress`, `blueprint` and `seed`,
 ## so everything the window shows about the session comes from here. Nothing
 ## in core/ draws or runs timers: the window passes in the time that passed.
 ##
