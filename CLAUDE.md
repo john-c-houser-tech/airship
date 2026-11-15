@@ -23,9 +23,12 @@ archived), whose rules and tests are the spec for Airship's rules.
   milestone 5 mock-ups: inside the hangar beside the airship's front third,
   looking out the big door. It takes the daylight, the weather, the
   airship's progress (`App.airship_progress()`, 40 built plants a ship) and
-  the garden's count from the core, and draws only when they change. The
-  workshop corner (`machinery.gd` drawn once, `workshop.gd` redrawn while the
-  arm moves) stands in the left foreground, and `hud.gd` holds the words.
+  the garden's count from the core, and draws only when they change (into
+  a cached picture: replaying it each frame cost 69% of a core). The
+  workshop corner stands on the hangar's floor in the left foreground, seen
+  through the same camera (`corner_canvas.gd`): `machinery.gd` (boiler,
+  planter, hopper) is drawn when the hangar is, `workshop.gd` (the arm and
+  plant) every frame while the arm works. `hud.gd` holds the words.
 - `core/` holds the rules, which draw nothing and run no timers: `app.gd`
   ties them together and returns events saying what changed;
   `options.gd` is the only reader of the environment (the `AIRSHIP_*`

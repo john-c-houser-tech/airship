@@ -23,10 +23,8 @@ const Hangar := preload("res://scene/hangar.gd")
 const Machinery := preload("res://scene/machinery.gd")
 const Workshop := preload("res://scene/workshop.gd")
 const Hud := preload("res://scene/hud.gd")
-# Where the workshop corner stands: its own drawing, scaled into the left
-# foreground on the hangar's boards (milestone 5b redraws it in 3D).
-const WORKSHOP_PLACE := Transform2D(0.0, Vector2(0.55, 0.55), 0.0, Vector2(-8, 352))
-# The hangar's lamplight on the workshop corner, by day.
+# The hangar's lamplight on the arm and plant, by day (the machinery lights
+# itself, as the hangar does).
 const WORKSHOP_TINT := Color(0.86, 0.80, 0.72)
 
 # Godot waits the longer of 1/max_fps and the low-processor sleep between
@@ -44,7 +42,7 @@ const THEME_EVERY_MS := 2_000
 const SHOT_FRAMES := 4
 # Pixels the frame check reads: sky through the door, the boiler, the floor.
 const SKY_PIXEL := Vector2i(300, 275)
-const BOILER_PIXEL := Vector2i(33, 660)
+const BOILER_PIXEL := Vector2i(40, 600)
 const FLOOR_PIXEL := Vector2i(640, 690)
 
 var app: App
@@ -133,8 +131,9 @@ func _ready() -> void:
 		add_child(layer)
 	_fit_hangar_picture()
 	get_window().size_changed.connect(_fit_hangar_picture)
+	# The corner stands on the hangar's floor, seen through its camera.
 	for corner: Node2D in [_machinery, _workshop]:
-		corner.transform = WORKSHOP_PLACE
+		corner.call("stand_in", _hangar)
 	_player = AudioStreamPlayer.new()
 	add_child(_player)
 	_workshop.time_scale = app.session.seconds() / Workshop.BuildPlan.SESSION
@@ -270,11 +269,11 @@ func _show_everything() -> void:
 func _show_sky() -> void:
 	if _hangar.show_world(app.daylight, app.weather.now(), app.airship_progress(), app.garden.built()):
 		_hangar_paint.render_target_update_mode = SubViewport.UPDATE_ONCE
+		_machinery.queue_redraw()
 	var lamplight := 0.45 + 0.55 * app.daylight.ambient
 	# The golden hour reaches the corner too.
 	var tint := Color(WORKSHOP_TINT * lamplight, 1.0).lerp(app.daylight.warm, app.daylight.warmth * 0.2)
-	for corner: Node2D in [_machinery, _workshop]:
-		corner.modulate = tint
+	_workshop.modulate = tint
 
 
 ## Plays a distant sound, made ahead of time by bin/make-sounds (the package
