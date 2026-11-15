@@ -1,9 +1,10 @@
 class_name Parts
 extends RefCounted
 ## What the garden makes and what the airship needs: the game's economy, as
-## plain sums over the garden's plants. Nothing here is saved: how many parts
-## there are follows from which plants stand and in what order the garden
-## saved them, so the garden file stays the one record.
+## plain sums over the garden's plants. How many parts have been made
+## follows from which plants stand and in what order the garden saved them;
+## the garden file keeps only how many were fitted to the airship, in the
+## break after a session.
 ##
 ## Each plant is of one kind, by its blueprint, and makes one kind of part
 ## for as long as it stands. Only focus moves the game forward: a plant
@@ -56,13 +57,23 @@ static func made(plants: Array[Garden.Plant]) -> Array[int]:
 	return parts
 
 
-## How far the airship is built from the parts made, 0 to 1. Parts past what
+## The parts ready for the airship: those made, as many as the ship needs,
+## that aren't `fitted` yet. By kind.
+static func waiting(made_: Array[int], fitted: Array[int]) -> Array[int]:
+	var ready := _none()
+	for kind in KINDS:
+		var on_ship := fitted[kind] if kind < fitted.size() else 0
+		ready[kind] = maxi(mini(made_[kind], NEEDED[kind]) - on_ship, 0)
+	return ready
+
+
+## How far the airship is built from the parts fitted, 0 to 1. Parts past what
 ## the ship needs of a kind add nothing: forty gear-flowers alone don't fly.
 static func airship_built(parts: Array[int]) -> float:
 	var fitted := 0
 	var whole := 0
 	for kind in KINDS:
-		fitted += mini(parts[kind], NEEDED[kind])
+		fitted += mini(parts[kind] if kind < parts.size() else 0, NEEDED[kind])
 		whole += NEEDED[kind]
 	return float(fitted) / whole
 
@@ -81,15 +92,17 @@ static func unlocked(airship: float) -> Array[int]:
 	return kinds
 
 
-## The plant the airship most needs next, of those unlocked: the kind whose
+## The plant the airship most needs next, of those unlocked (`open`): the kind whose
 ## missing parts would take the longest for the plants already standing,
 ## and one more, to make. A rough guide for when nobody chooses (it plants
 ## more kettle-gourds than the drums need). Once the ship has every part,
-## a gear-flower.
-static func most_needed(plants: Array[Garden.Plant]) -> Kind:
+## the first of those unlocked.
+static func most_needed(plants: Array[Garden.Plant], open: Array[int] = []) -> Kind:
 	var parts := made(plants)
 	var counts := standing(plants)
-	var open := unlocked(airship_built(parts))
+	if open.is_empty():
+		# Nobody said which are unlocked: as if every part made were fitted.
+		open = unlocked(airship_built(parts))
 	var best := open[0] as Kind
 	var longest := -1.0
 	for kind: int in open:

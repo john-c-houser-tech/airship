@@ -1,6 +1,7 @@
 extends Node2D
 ## The words on screen: the countdown while the arm builds, one line saying
-## what is happening and what to do next, between sessions which plant comes
+## what is happening and what to do next (in the break after a session, its
+## steps one at a time), between sessions which plant comes
 ## next and how to choose another, and a line when the garden can't be
 ## saved. Plain words, never the design's terms.
 
@@ -14,6 +15,9 @@ var notices_work := true
 var muted := false
 ## The plant the next session builds (Parts.Kind).
 var next_plant := 0
+## What the break asks for next (App.BreakStep), and the plant it's about.
+var break_step := App.BreakStep.NONE
+var new_plant := 0
 ## Says each line in the current language.
 var catalog := Catalog.new("en")
 
@@ -35,6 +39,14 @@ func _draw() -> void:
 
 ## What is happening, and the one thing to do next.
 func next_step() -> String:
+	match break_step if state != Session.State.BUILDING else App.BreakStep.NONE:
+		App.BreakStep.PLANT:
+			var plant := catalog.translate(Parts.PLANT_NAMES[new_plant])
+			return catalog.translate("Built. Click the garden through the door, or press Enter, to plant your new %s.") % plant
+		App.BreakStep.COLLECT:
+			return catalog.translate("Your plants have made parts. Click the garden, or press Enter, to collect them.")
+		App.BreakStep.FIT:
+			return catalog.translate("You have parts for the airship. Click the airship, or press Enter, to fit them.")
 	match state:
 		Session.State.BUILDING:
 			return catalog.translate("Building. Stay with your work; press Space only to give up.")

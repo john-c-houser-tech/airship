@@ -55,6 +55,9 @@ var progress := 0.0
 ## one shortened by AIRSHIP_SECONDS.
 var time_scale := 1.0
 var plan: BuildPlan
+## Whether the plant just built has gone out to the garden: until then it
+## stands finished on the planter.
+var planted := true
 ## The plant being built (Parts.Kind).
 var kind := Parts.Kind.GEAR_FLOWER
 
@@ -163,7 +166,8 @@ func _pose_at(t: float) -> BuildPlan.Pose:
 			pose.open = 1.0
 		return pose
 	var still := plan.pose(BuildPlan.SESSION if state == Session.State.BUILT else 0.0)
-	if state == Session.State.IDLE:
+	if state == Session.State.IDLE or (state == Session.State.BUILT and planted):
+		# Nothing on the planter: no plant yet, or it's out in the garden.
 		still.placed = 0
 	return still
 

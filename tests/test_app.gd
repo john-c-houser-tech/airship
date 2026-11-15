@@ -205,21 +205,65 @@ func test_a_rusted_plant_tells_the_desktop_nothing() -> void:
 	check(not App.Event.PLANT_BUILT in app.give_up(), "no notice for giving up")
 
 
-func test_the_airship_grows_from_the_parts_the_garden_makes() -> void:
-	var app := _app(25 * 60, "airship")
-	same(app.airship_progress(), 0.0, "an empty garden")
-	same(app.next_blueprint(), Parts.Kind.GIRDER_REED, "the frame's struts are wanted first")
-	app.start(app.next_blueprint(), 1)
+func test_the_break_plants_collects_and_fits() -> void:
+	var app := _app(25 * 60, "break")
+	same(app.break_step(), App.BreakStep.NONE, "nothing to do in an empty garden")
+	same(app.take_break_step(), [] as Array[int], "and nothing happens")
+	app.start(app.blueprint(), 1)
+	same(app.break_step(), App.BreakStep.NONE, "nothing to do while the arm builds")
 	app.advance(25 * 60 * 1000)
-	same(app.airship_progress(), 0.0, "a new plant has made nothing yet")
-	app.start(app.next_blueprint(), 2)
+	same(app.break_step(), App.BreakStep.PLANT, "first the new plant goes out to the garden")
+	check(not app.planted(), "it stands on the planter until then")
+	same(app.take_break_step(), [App.Event.BREAK, App.Event.GARDEN] as Array[int], "planting says so")
+	check(app.planted(), "planted")
+	same(app.break_step(), App.BreakStep.NONE, "a new plant has made nothing yet: the break is over")
+	app.start(app.blueprint(), 2)
+	app.advance(25 * 60 * 1000)
+	app.take_break_step()
+	same(app.break_step(), App.BreakStep.COLLECT, "the first plant made a part in the second session")
+	same(app.airship_progress(), 0.0, "a part made isn't on the ship yet")
+	same(app.take_break_step(), [App.Event.BREAK] as Array[int], "collecting says so")
+	same(app.break_step(), App.BreakStep.FIT, "then it is fitted")
+	same(app.take_break_step(), [App.Event.BREAK, App.Event.GARDEN] as Array[int], "fitting changes the airship")
+	same(app.airship_progress(), 1.0 / 70.0, "one strut on the ship")
+	same(app.garden.fitted(), [0, 0, 1, 0, 0] as Array[int], "the oldest plant made it, a girder-reed")
+	same(app.break_step(), App.BreakStep.NONE, "and the break has run out")
+	same(app.take_break_step(), [] as Array[int], "nothing more to take")
+
+
+func test_a_skipped_break_loses_nothing() -> void:
+	var app := _app(25 * 60, "skipped")
+	for k in 3:
+		app.start(app.blueprint(), k + 1)
+		app.advance(25 * 60 * 1000)
+	same(app.airship_progress(), 0.0, "nothing fitted while the breaks were skipped")
+	check(app.planted() == false, "the last plant still on the planter")
+	app.take_break_step()
+	same(app.break_step(), App.BreakStep.COLLECT, "the parts waited")
+	app.take_break_step()
+	same(app.break_step(), App.BreakStep.FIT, "collected")
+	app.take_break_step()
+	same(app.airship_progress(), 3.0 / 70.0, "all three fitted in one go")
+	# Another Airship opened on the same garden sees the ship as built.
+	var again := App.new(app.options)
+	same(again.airship_progress(), 3.0 / 70.0, "what was fitted is kept in the garden file")
+	same(again.break_step(), App.BreakStep.NONE, "and nothing is asked for twice")
+
+
+func test_a_session_given_up_leaves_no_plant_to_plant() -> void:
+	var app := _app(25 * 60, "no-plant")
+	app.start(app.blueprint(), 1)
 	app.advance(60_000)
 	app.give_up()
-	same(app.airship_progress(), 0.0, "a session given up ripens nothing")
-	app.start(app.next_blueprint(), 3)
+	same(app.break_step(), App.BreakStep.NONE, "a rusted plant isn't planted out")
+
+
+func test_starting_again_plants_the_plant_left_on_the_planter() -> void:
+	var app := _app(25 * 60, "left")
+	app.start(app.blueprint(), 1)
 	app.advance(25 * 60 * 1000)
-	same(app.airship_progress(), 1.0 / 70.0, "the first plant made a strut in the second full session")
-	same(Parts.made(app.garden.plants()), [0, 0, 1, 0, 0] as Array[int], "the oldest plant made it, not the newest")
+	app.start(app.blueprint(), 2)
+	check(app.planted(), "the arm needs the planter")
 
 
 func test_the_next_plant_can_be_chosen_from_those_unlocked() -> void:
@@ -241,3 +285,36 @@ func test_the_next_plant_can_be_chosen_from_those_unlocked() -> void:
 	app.advance(60_000)
 	app.give_up()
 	same(app.blueprint(), Parts.Kind.SAIL_COTTON, "giving up keeps the choice")
+
+
+func test_a_trial_sessions_plant_stands_on_the_planter_unkept() -> void:
+	var options := Options.new()
+	options.seconds = 10
+	var app := App.new(options)
+	app.start(2, 1)
+	app.advance(10_000)
+	same(app.session.state(), Session.State.BUILT, "built")
+	check(app.on_planter(), "the finished plant stands on the planter")
+	same(app.break_step(), App.BreakStep.NONE, "but it isn't kept, so there is nothing to plant")
+	app.start(2, 2)
+	check(not app.on_planter(), "until the arm starts again")
+
+
+func test_blueprints_unlock_by_parts_fitted_and_parts_are_asked_for_again() -> void:
+	var app := _app(25 * 60, "fitted-unlocks")
+	for k in 3:
+		app.start(app.blueprint(), k + 1)
+		app.advance(25 * 60 * 1000)
+	check(app.on_planter(), "the last plant stands on the planter")
+	app.choose(1)
+	app.choose(1)
+	check(app.blueprint() in [Parts.Kind.GIRDER_REED, Parts.Kind.SAIL_COTTON], "parts made but not fitted unlock nothing")
+	same(app.take_break_step(), [App.Event.BREAK, App.Event.GARDEN] as Array[int], "plant")
+	check(not app.on_planter(), "the planter is empty")
+	same(app.take_break_step(), [App.Event.BREAK] as Array[int], "collect")
+	same(app.take_break_step(), [App.Event.BREAK, App.Event.GARDEN] as Array[int], "fit")
+	same(Parts.unlocked(app.airship_progress()).size(), 4, "the first parts on the ship unlock two more")
+	app.start(app.blueprint(), 9)
+	app.advance(25 * 60 * 1000)
+	app.take_break_step()
+	same(app.break_step(), App.BreakStep.COLLECT, "another session, more parts to collect")

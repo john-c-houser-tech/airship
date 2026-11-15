@@ -84,3 +84,11 @@ func test_blueprints_unlock_as_the_airship_grows() -> void:
 	same(Parts.unlocked(0.1), [0, 1, 2, 3, 4] as Array[int], "a tenth built brings the kettle-gourd")
 	same(Parts.unlocked(1.0), [0, 1, 2, 3, 4] as Array[int], "all five on a whole ship")
 	same(Parts.most_needed(_garden([2, 3])), Parts.Kind.GEAR_FLOWER, "the suggestion keeps to what is unlocked")
+
+
+func test_parts_wait_until_they_are_fitted() -> void:
+	same(Parts.waiting([3, 0, 5, 0, 0] as Array[int], [] as Array[int]), [3, 0, 5, 0, 0] as Array[int], "nothing fitted yet")
+	same(Parts.waiting([3, 0, 5, 0, 0] as Array[int], [1, 0, 5] as Array[int]), [2, 0, 0, 0, 0] as Array[int], "less what is on the ship")
+	same(Parts.waiting([99, 0, 0, 0, 9] as Array[int], [0, 0, 0, 0, 0] as Array[int]), [12, 0, 0, 0, 2] as Array[int], "no more than the ship needs")
+	same(Parts.waiting([1, 0, 0, 0, 0] as Array[int], [5, 0, 0, 0, 0] as Array[int]), [0, 0, 0, 0, 0] as Array[int], "never less than none")
+	same(Parts.airship_built([0, 0, 7] as Array[int]), 7.0 / 70.0, "a short list of fitted parts counts too")
