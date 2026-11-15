@@ -64,6 +64,9 @@ enum Painting { ALL, OUTSIDE, INSIDE }
 var painting := Painting.ALL
 ## The railway across the valley: this far beyond the door.
 const RAILWAY_Z := DOOR_Z + 350.0
+## Where the near hills start to rise beyond the door, and where they crest.
+const HILLS_FOOT := 520.0
+const HILLS_CREST := 2400.0
 # How strongly the sun shines in, 0 to 1: up, high enough, not clouded over.
 var _sun := 1.0
 # How bright the day is outside, 0 (night) to 1, from the daylight.
@@ -148,7 +151,7 @@ func _what_shows() -> String:
 	var steps := func(v: float, n: float) -> int: return roundi(v * n)
 	return "%d %d %d %d %d %d %d %d %d %s %s" % [steps.call(_day, 40.0), steps.call(_sun, 20.0),
 		steps.call(daylight.stars, 10.0), steps.call(daylight.warmth, 20.0),
-		steps.call(conditions.cloud, 10.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
+		steps.call(conditions.cloud, 40.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
 		steps.call(conditions.snow, 10.0), garden_plants, daylight.top.to_html(false).left(5), str(built)] \
 		+ " %d %d %s" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather)]
 
@@ -281,6 +284,8 @@ func _same(colour: Color, n: int) -> PackedColorArray:
 	return cols
 
 
+## A colour under more or less light, as solid as it was (Color * float
+## would thin it, and the stars would shine through the mountains).
 func _shade(base: Color, f: float) -> Color:
 	return Color(base.r * f, base.g * f, base.b * f, base.a)
 
@@ -335,11 +340,11 @@ func clear_sky_at(light: Daylight, screen_y: float) -> Color:
 
 
 func _sky_top() -> Color:
-	return daylight.top.lerp(Color(0.62, 0.65, 0.70) * daylight.ambient, conditions.cloud * 0.6)
+	return daylight.top.lerp(_shade(Color(0.62, 0.65, 0.70), daylight.ambient), conditions.cloud * 0.6)
 
 
 func _sky_bottom() -> Color:
-	return daylight.bottom.lerp(Color(0.62, 0.65, 0.70) * daylight.ambient, conditions.cloud * 0.6)
+	return daylight.bottom.lerp(_shade(Color(0.62, 0.65, 0.70), daylight.ambient), conditions.cloud * 0.6)
 
 
 func _draw_sky() -> void:
@@ -373,71 +378,107 @@ func _ridge_point(az_deg: float, dist: float, h: float) -> Vector3:
 	return Vector3(sin(a) * dist, h, cos(a) * dist + DOOR_Z)
 
 
+## The far range's peaks: azimuth, height, how far each flank runs to the
+## left and to the right (degrees), so no two have the same shape.
 const PEAKS := [
-	[-52.0, 3300.0, 12.0], [-38.0, 3900.0, 11.0], [-25.0, 4600.0, 11.0],
-	[-12.0, 4000.0, 10.0], [9.0, 4200.0, 10.0], [22.0, 5000.0, 11.0],
-	[38.0, 3800.0, 11.0], [54.0, 4300.0, 12.0],
+	[-62.0, 2916.0, 19.0, 23.0], [-47.0, 3276.0, 17.0, 19.0], [-34.0, 3564.0, 18.0, 15.0],
+	[-25.0, 3204.0, 12.0, 14.0], [-14.0, 3924.0, 16.0, 12.0], [-6.0, 4500.0, 13.0, 15.0],
+	[3.0, 3996.0, 11.0, 16.0], [14.0, 3420.0, 13.0, 15.0], [26.0, 3708.0, 16.0, 18.0],
+	[39.0, 3276.0, 15.0, 17.0], [52.0, 3492.0, 17.0, 21.0], [66.0, 3060.0, 17.0, 21.0],
 ]
 
 
-## Height of the far range at an azimuth, and which peak owns it.
-func _range_height(az: float) -> Vector2:
-	var best := 1300.0 + 90.0 * sin(az * 0.9) + 50.0 * sin(az * 2.7)
-	var who := -1.0
+## A fixed roughness along the range: -1 to 1, the same every time, with no
+## pattern the eye can follow.
+func _crag(az: float, seed_: float) -> float:
+	var a := az + seed_ * 37.0
+	return (sin(a * 1.7 + 0.6 * sin(a * 0.43)) * 0.45 + sin(a * 4.1 + seed_ + 1.3 * sin(a * 0.9)) * 0.30
+			+ sin(a * 9.7 + seed_ * 2.0) * 0.15 + sin(a * 21.3 + seed_ * 5.0) * 0.10)
+
+
+## Height of the far range at an azimuth.
+func _range_height(az: float) -> float:
+	# One connected range: a high crest the peaks stand on, so the saddles
+	# between them stay far above the foothills.
+	var best := 2500.0 + 260.0 * _crag(az * 0.3, 9.0) + 110.0 * _crag(az * 1.1, 12.0)
 	for k in PEAKS.size():
 		var pk: Array = PEAKS[k]
-		var h: float = float(pk[1]) * (1.0 - absf(az - float(pk[0])) / float(pk[2]))
-		h += 80.0 * sin(az * 5.3 + k) + 40.0 * sin(az * 13.1 + k * 2.0)
-		if h > best:
-			best = h
-			who = k
-	return Vector2(best, who)
+		var off := az - float(pk[0])
+		var flank: float = float(pk[2]) if off < 0.0 else float(pk[3])
+		var t := 1.0 - absf(off) / flank
+		if t <= 0.0:
+			continue
+		# Broad at the foot, steep near the top, with shoulders and notches.
+		var h: float = float(pk[1]) * (0.62 * t + 0.38 * t * t)
+		h += float(pk[1]) * (0.06 * _crag(az, float(k)) + 0.03 * _crag(az * 2.3, k + 20.0)) * minf(1.0, t * 3.0 + 0.2)
+		best = maxf(best, h)
+	return best
+
+
+## How high the ground stands: level in the valley, where the railway runs,
+## then rising to the crest of the near hills.
+func _ground(az: float, dist: float) -> float:
+	var k := smoothstep(HILLS_FOOT, HILLS_CREST, dist)
+	return k * (170.0 + 60.0 * sin(az * 0.08 + 0.77) + 26.0 * sin(az * 0.31 + 2.31) + 8.0 * _crag(az * 0.5, 3.0))
+
+
+func _ground_point(az: float, dist: float) -> Vector3:
+	return _ridge_point(az, dist, _ground(az, dist))
+
+
+## The ground under a spot in the world.
+func _ground_at(x: float, z: float) -> float:
+	var t := z - DOOR_Z
+	return _ground(rad_to_deg(atan2(x, t)), Vector2(x, t).length())
 
 
 func _draw_land() -> void:
 	var horizon := SIZE * 0.5 + _focal * tan(_pitch)
-	var grass_lit := 0.3 + 0.7 * _day
-	var far_grass := Color(0.50, 0.60, 0.42) * grass_lit
-	var near_grass := Color(0.36, 0.50, 0.28) * grass_lit
+	var dim := 0.3 + 0.7 * _day
+	var far_grass := _shade(Color(0.46, 0.58, 0.40), dim)
+	var near_grass := _shade(Color(0.36, 0.50, 0.28), dim)
 	_fan(PackedVector2Array([Vector2(0, horizon - 2), Vector2(SIZE, horizon - 2), Vector2(SIZE, SIZE), Vector2(0, SIZE)]),
 		PackedColorArray([far_grass, far_grass, near_grass, near_grass]))
-	# The far range: grey-blue peaks, sunlit on their left faces, snow on top.
+	# The far range: grey-blue peaks, sunlit where they face left, snow on top.
 	var dist := 14000.0
-	var az := -75.0
-	var step := 0.4
-	while az < 75.0:
-		var h0 := _range_height(az)
-		var h1 := _range_height(az + step)
-		var lit := true
-		if h0.y >= 0.0:
-			lit = az < float((PEAKS[int(h0.y)] as Array)[0])
-		var face := (Color(0.68, 0.72, 0.80) if lit else Color(0.50, 0.55, 0.66)) * (0.3 + 0.7 * _day)
-		var foot := _sky_bottom()
-		_poly([_ridge_point(az, dist, h0.x), _ridge_point(az + step, dist, h1.x),
+	var step := 0.25
+	var count := int(150.0 / step)
+	# Each height once: the slices share their corners.
+	var heights := PackedFloat32Array()
+	for k in count + 1:
+		heights.append(_range_height(-75.0 + k * step))
+	var foot := _sky_bottom()
+	for k in count:
+		var az := -75.0 + k * step
+		var h0 := heights[k]
+		var h1 := heights[k + 1]
+		# A face that climbs to the right looks left, into the light.
+		var lit := heights[mini(k + 4, count)] > heights[maxi(k - 4, 0)]
+		var face := _shade(Color(0.68, 0.72, 0.80) if lit else Color(0.50, 0.55, 0.66), dim)
+		_poly([_ridge_point(az, dist, h0), _ridge_point(az + step, dist, h1),
 				_ridge_point(az + step, dist, -60), _ridge_point(az, dist, -60)],
 			[face, face, foot, foot])
-		var snow0 := _snow_depth(az, h0.x)
-		var snow1 := _snow_depth(az + step, h1.x)
+		var snow0 := _snow_depth(az, h0)
+		var snow1 := _snow_depth(az + step, h1)
 		if snow0 > 0.0 or snow1 > 0.0:
-			var white := (Color(0.96, 0.97, 0.99) if lit else Color(0.80, 0.85, 0.92)) * (0.3 + 0.7 * _day)
-			_flat([_ridge_point(az, dist, h0.x), _ridge_point(az + step, dist, h1.x),
-					_ridge_point(az + step, dist, h1.x - snow1), _ridge_point(az, dist, h0.x - snow0)],
+			var white := _shade(Color(0.96, 0.97, 0.99) if lit else Color(0.80, 0.85, 0.92), dim)
+			_flat([_ridge_point(az, dist, h0), _ridge_point(az + step, dist, h1),
+					_ridge_point(az + step, dist, h1 - snow1), _ridge_point(az, dist, h0 - snow0)],
 				white)
-		az += step
-	var dim := 0.3 + 0.7 * _day
-	_draw_hills(6000.0, 260.0, 120.0, Color(0.33, 0.45, 0.45) * dim, Color(0.55, 0.64, 0.66) * dim, 0.31)
-	_draw_hills(2400.0, 120.0, 70.0, Color(0.33, 0.47, 0.33) * dim, Color(0.42, 0.54, 0.40) * dim, 0.77)
+	# Foothills, each row higher and hazier than the one in front.
+	_draw_hills(9000.0, 900.0, 260.0, _shade(Color(0.42, 0.52, 0.56), dim), _shade(Color(0.58, 0.66, 0.70), dim), 0.31)
+	_draw_hills(5200.0, 430.0, 150.0, _shade(Color(0.34, 0.47, 0.42), dim), _shade(Color(0.48, 0.58, 0.54), dim), 1.9)
+	_draw_ground(far_grass, near_grass)
 	_draw_railway(dim)
-
-	_draw_road()
+	_draw_road(dim)
 
 
 func _snow_depth(az: float, h: float) -> float:
-	var over := h - 2500.0
+	var over := h - 2900.0
 	if over <= 0.0:
 		return 0.0
 	# Ragged lower edge: streaks of snow running down the gullies.
-	var streak := maxf(0.0, sin(az * 9.0)) * 260.0 + maxf(0.0, sin(az * 23.0 + 1.0)) * 140.0
+	var streak := maxf(0.0, _crag(az * 1.3, 4.0)) * 380.0 + maxf(0.0, sin(az * 23.0 + 1.0)) * 120.0
 	return over * 0.4 + streak * 1.6 * clampf(over / 800.0, 0.0, 1.0)
 
 
@@ -445,13 +486,47 @@ func _draw_hills(dist: float, base_h: float, swing: float, top: Color, foot: Col
 	var az := -75.0
 	var step := 1.0
 	while az < 75.0:
-		var h0 := base_h + swing * sin(az * 0.08 + seed_) + swing * 0.4 * sin(az * 0.31 + seed_ * 3.0)
 		var a2 := az + step
-		var h1 := base_h + swing * sin(a2 * 0.08 + seed_) + swing * 0.4 * sin(a2 * 0.31 + seed_ * 3.0)
-		_poly([_ridge_point(az, dist, h0), _ridge_point(a2, dist, h1),
+		_poly([_ridge_point(az, dist, _hill(az, base_h, swing, seed_)), _ridge_point(a2, dist, _hill(a2, base_h, swing, seed_)),
 				_ridge_point(a2, dist, -40), _ridge_point(az, dist, -40)],
 			[top, top, foot, foot])
 		az = a2
+
+
+func _hill(az: float, base_h: float, swing: float, seed_: float) -> float:
+	return (base_h + swing * sin(az * 0.08 + seed_) + swing * 0.4 * sin(az * 0.31 + seed_ * 3.0)
+			+ swing * 0.25 * _crag(az * 0.4, seed_))
+
+
+## The near hills: the valley floor climbing to their crest, as real ground
+## (the road runs up it), far rows first.
+func _draw_ground(far_grass: Color, near_grass: Color) -> void:
+	var rows := 16
+	var cols := 50
+	# The valley floor behind is nearly the far grass where the hills begin,
+	# so they start in it: no step along their foot.
+	var foot := far_grass.lerp(near_grass, 0.06)
+	var crest := far_grass.lerp(near_grass, 0.45)
+	# Each corner once: a row of points and lights at each distance.
+	var points: Array[Vector3] = []
+	var colours: Array[Color] = []
+	for row in rows + 1:
+		var d := lerpf(HILLS_FOOT, HILLS_CREST, float(row) / rows)
+		var colour := foot.lerp(crest, sin(PI * 0.5 * float(row) / rows))
+		for col in cols + 1:
+			var az := -75.0 + col * 150.0 / cols
+			points.append(_ground_point(az, d))
+			colours.append(_shade(colour, _slope_light(az, d)))
+	for row in range(rows, 0, -1):
+		for col in cols:
+			var a := row * (cols + 1) + col
+			var b := (row - 1) * (cols + 1) + col
+			_poly([points[a], points[a + 1], points[b + 1], points[b]],
+				[colours[a], colours[a + 1], colours[b + 1], colours[b]])
+
+
+func _slope_light(az: float, dist: float) -> float:
+	return 1.0 + 0.10 * clampf((_ground(az + 1.5, dist) - _ground(az - 1.5, dist)) / 14.0, -1.0, 1.0)
 
 
 ## The railway across the valley: a ballast bank with its rails, and a
@@ -459,14 +534,14 @@ func _draw_hills(dist: float, base_h: float, swing: float, top: Color, foot: Col
 func _draw_railway(dim: float) -> void:
 	var z := RAILWAY_Z
 	_flat([Vector3(-4000, 0.6, z - 7), Vector3(4000, 0.6, z - 7), Vector3(4000, 0.6, z + 7), Vector3(-4000, 0.6, z + 7)],
-		Color(0.45, 0.40, 0.34) * dim)
+		_shade(Color(0.45, 0.40, 0.34), dim))
 	for side: float in [-2.4, 2.4]:
-		_beam(Vector3(-4000, 1.2, z + side), Vector3(4000, 1.2, z + side), 0.5, Color(0.25, 0.24, 0.24) * dim, Color(0, 0, 0, 0))
+		_beam(Vector3(-4000, 1.2, z + side), Vector3(4000, 1.2, z + side), 0.5, _shade(Color(0.25, 0.24, 0.24), dim), Color(0, 0, 0, 0))
 	var crossing := _road_x(z)
 	# Beyond the track, so a passing train goes in front of them.
 	for side: float in [-14.0, 14.0]:
 		var foot := Vector3(crossing + side, 0, z + 12)
-		_beam(foot, foot + Vector3(0, 10, 0), 0.8, Color(0.92, 0.92, 0.9) * dim, Color(0, 0, 0, 0))
+		_beam(foot, foot + Vector3(0, 10, 0), 0.8, _shade(Color(0.92, 0.92, 0.9), dim), Color(0, 0, 0, 0))
 
 
 ## Where the railway meets the road, across the valley.
@@ -476,18 +551,27 @@ func crossing_x() -> float:
 
 func _road_x(z: float) -> float:
 	var t := z - DOOR_Z
-	return 260.0 * t / 2400.0 + 70.0 * sin(t / 420.0)
+	return 260.0 * t / HILLS_CREST + 70.0 * sin(t / 420.0)
 
 
-func _draw_road() -> void:
-	var colour := Color(0.66, 0.58, 0.44)
+## The road: one ribbon from the door, over the crossing and up the hill to
+## its crest, narrowing with distance as the ground carries it.
+func _draw_road(dim: float) -> void:
+	var colour := _shade(Color(0.66, 0.58, 0.44), dim)
+	# Projected unclipped: the road starts at the door, far in front of the
+	# camera, and stops short of the crest, where it goes over out of sight.
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
 	var z := DOOR_Z
-	while z < DOOR_Z + 2400.0:
-		var z2 := z + 30.0
-		var w := 9.0
-		_flat([Vector3(_road_x(z) - w, 0.2, z), Vector3(_road_x(z2) - w, 0.2, z2),
-				Vector3(_road_x(z2) + w, 0.2, z2), Vector3(_road_x(z) + w, 0.2, z)], colour)
-		z = z2
+	while z <= DOOR_Z + 0.9 * HILLS_CREST:
+		var x := _road_x(z)
+		var y := _ground_at(x, z) + 0.2
+		left.append(_project(_to_cam(Vector3(x - 9.0, y, z))))
+		right.append(_project(_to_cam(Vector3(x + 9.0, y, z))))
+		z += 15.0
+	for k in left.size() - 1:
+		_fan(PackedVector2Array([left[k], left[k + 1], right[k + 1], right[k]]),
+			PackedColorArray([colour, colour, colour, colour]))
 
 
 # ---------------------------------------------------------------- the garden
@@ -577,18 +661,96 @@ func _interior_light(z: float) -> float:
 	return (0.4 + 0.75 * t * t * t) * (0.38 + 0.62 * _day)
 
 
-## Clouds in the doorway's patch of sky. Drawn still; their places fixed.
+## Clouds in the doorway's patch of sky, as Grove drew them: each a heap of
+## soft puffs, of three kinds (heaped, layered, wispy), lit by the hour and
+## tinted by the sky. More of them show as the cover grows. Drawn still;
+## their places fixed.
 func _draw_clouds() -> void:
-	var lit := 0.15 + 0.85 * _day
-	if conditions.cloud > 0.0:
-		# In the doorway's patch of sky, between the lintel and the peaks.
-		var random := Random.new(11)
-		for k in 7:
-			var at := Vector2(90 + random.unit() * 440, 250 + random.unit() * 70)
-			var size := Vector2(110 + random.unit() * 120, 26 + random.unit() * 20)
-			var colour := Color(0.88, 0.89, 0.92) * lit
-			_ellipse(at, size, Color(colour, 0.6 * conditions.cloud))
-			_ellipse(at + Vector2(size.x * 0.3, -size.y * 0.35), size * 0.6, Color(colour, 0.5 * conditions.cloud))
+	if conditions.cloud <= 0.02:
+		return
+	var level := (0.24 + 0.73 * daylight.ambient) * (1.0 - 0.4 * conditions.rain)
+	var sky := _sky_top().lerp(_sky_bottom(), 0.6)
+	var mean := (sky.r + sky.g + sky.b) / 3.0
+	var cast := clampf(0.8 * (1.0 - daylight.ambient) / 0.78, 0.0, 0.6)
+	var tone := Color(clampf(level * 0.98 + cast * (sky.r - mean), 0.0, 1.0),
+		clampf(level * 0.99 + cast * (sky.g - mean), 0.0, 1.0),
+		clampf(level + cast * (sky.b - mean), 0.0, 1.0))
+	var shade := Color(tone.r * 0.66, tone.g * 0.71, tone.b * 0.8)
+	for k in 9:
+		var shown := clampf(conditions.cloud * 9.0 - k, 0.0, 1.0) * (0.7 + 0.3 * conditions.cloud)
+		if shown <= 0.0:
+			continue
+		var a := absf(sin(k * 91.7 + 1.3))
+		var b := absf(sin(k * 47.1 + 2.9))
+		var w := 120.0 + 100.0 * a
+		var corner := Vector2(70.0 + fposmod(a * 7.0 + k * 0.37, 1.0) * 480.0 - w * 0.5, 226.0 + 62.0 * b)
+		_draw_cloud(k + 1, Rect2(corner, Vector2(w, w * 0.44)), tone, shade, shown)
+
+
+func _draw_cloud(seed_: int, box: Rect2, tone: Color, shade: Color, shown: float) -> void:
+	var r := Random.new(seed_ * 7919 + 13)
+	var w := box.size.x
+	var h := box.size.y
+	var puff := func(x: float, y: float, rad: float, stretch: float, colour: Color, alpha: float) -> void:
+		# Kept inside the cloud's box, as Grove did: flat bases, no stray wisps.
+		var inside := maxf(1.0, minf(minf(rad, y), minf(h - y, minf(x, w - x))))
+		var wide := maxf(1.0, minf(stretch, minf(x / inside, (w - x) / inside)))
+		_puff(box.position + Vector2(x, y), inside, wide, colour, alpha * shown)
+	match seed_ % 3:
+		0:  # heaped: a flat base, rounded towers, frayed ends
+			var bottom := h * 0.8
+			var n := 10 + int(r.unit() * 6)
+			for i in n:
+				var t := (i + 0.5) / n
+				var rad := h * (0.15 + 0.3 * sin(PI * t) * (0.5 + 0.5 * r.unit()))
+				var x := w * (0.1 + 0.8 * t) + (r.unit() - 0.5) * w * 0.05
+				puff.call(x, bottom - rad * (0.5 + 0.35 * r.unit()), rad * 1.3, 1.0 + r.unit() * 0.3, tone, 0.62)
+			for m in 3 + int(r.unit() * 4):
+				puff.call(w * (0.22 + 0.56 * r.unit()), bottom - h * (0.3 + 0.25 * r.unit()),
+					h * (0.12 + 0.14 * r.unit()), 1.0 + r.unit() * 0.3, tone, 0.55)
+			puff.call(w * 0.5, bottom - h * 0.02, h * 0.2, w / (h * 0.2) * 0.42, shade, 0.4)
+			for q in 5 + int(r.unit() * 4):
+				var left := r.unit() < 0.5
+				puff.call(w * (0.22 * r.unit() if left else 0.78 + 0.22 * r.unit()), bottom - h * (0.02 + 0.22 * r.unit()),
+					h * (0.08 + 0.1 * r.unit()), 3.0 + r.unit() * 5.0, tone, 0.3)
+		1:  # layered: a long low bank
+			var count := 8 + int(r.unit() * 5)
+			for i in count:
+				var t := (i + 0.5) / count
+				puff.call(w * (0.08 + 0.84 * t) + (r.unit() - 0.5) * w * 0.05, h * (0.5 + (r.unit() - 0.5) * 0.14),
+					h * (0.12 + 0.14 * r.unit()), 2.5 + r.unit() * 3.0, tone, 0.45)
+			puff.call(w * 0.5, h * 0.64, h * 0.16, w / (h * 0.16) * 0.4, shade, 0.28)
+			for q in 7 + int(r.unit() * 4):
+				puff.call(w * (0.02 + 0.96 * r.unit()), h * (0.3 + 0.5 * r.unit()), h * (0.06 + 0.07 * r.unit()),
+					5.0 + r.unit() * 5.0, tone, 0.24)
+		_:  # wispy: thin curved strokes
+			for c in 6 + int(r.unit() * 5):
+				var x0 := w * (0.05 + 0.55 * r.unit())
+				var y0 := h * (0.2 + 0.6 * r.unit())
+				var bend := (r.unit() - 0.5) * 0.5
+				for j in 3 + int(r.unit() * 3):
+					puff.call(x0 + j * w * 0.09, y0 + j * j * h * 0.03 * bend, h * (0.06 + 0.05 * r.unit()),
+						4.0 + r.unit() * 4.0, tone, 0.26)
+
+
+## A soft round puff, `stretch` times as wide as tall: solid at the heart,
+## fading to nothing at its edge.
+func _puff(centre: Vector2, rad: float, stretch: float, colour: Color, alpha: float) -> void:
+	var steps := 20
+	var points := PackedVector2Array([centre])
+	var colours := PackedColorArray([Color(colour, alpha)])
+	for ring: Array in [[0.5, 0.45], [1.0, 0.0]]:
+		for k in steps:
+			var angle := TAU * k / steps
+			points.append(centre + Vector2(cos(angle) * rad * stretch, sin(angle) * rad) * float(ring[0]))
+			colours.append(Color(colour, alpha * float(ring[1])))
+	var idx := PackedInt32Array()
+	for k in steps:
+		var n := (k + 1) % steps
+		idx.append_array([0, 1 + k, 1 + n])
+		idx.append_array([1 + k, 1 + steps + k, 1 + steps + n])
+		idx.append_array([1 + k, 1 + steps + n, 1 + n])
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), idx, points, colours)
 
 
 ## Rain, snow and fog, all outside, in front of the land, the railway and
@@ -615,14 +777,6 @@ func _draw_weather_outside() -> void:
 		for k in 240:
 			_disc(Vector2(random.unit() * SIZE, random.unit() * SIZE * 0.75), 0.9 + random.unit() * 1.4,
 				Color(1, 1, 1, 0.85 * conditions.snow))
-
-
-func _ellipse(centre: Vector2, size: Vector2, colour: Color) -> void:
-	var points := PackedVector2Array()
-	for k in 24:
-		var angle := TAU * k / 24.0
-		points.append(centre + Vector2(cos(angle) * size.x, sin(angle) * size.y) * 0.5)
-	_fan(points, _same(colour, points.size()))
 
 
 func _draw_hangar_shell() -> void:
