@@ -373,3 +373,85 @@ func test_an_older_airship_dropping_the_parts_costs_only_fitting_again() -> void
 	same(fresh.fitted(), [] as Array[int], "a new window sees nothing fitted")
 	garden.record(_plant(2))
 	same(Garden.new(path).fitted(), [0, 2] as Array[int], "the window that fitted them puts them back")
+
+
+func test_a_scraped_plant_is_kept_and_read_back() -> void:
+	var path := _folder("scraped").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1, Garden.Outcome.RUSTED))
+	garden.record(_plant(2))
+	check(not _text(path).contains("scraped"), "no mark until one is scraped")
+	garden.scrape(garden.plants()[1], 1)
+	same(garden.problem(), Garden.Problem.NONE, "saved")
+	var again := Garden.new(path)
+	same(again.plants()[1].scraped, 1, "read back")
+	same(again.plants()[1].outcome, Garden.Outcome.RUSTED, "still the plant that rusted")
+	same(again.plants()[0].scraped, -1, "the built plant has no mark")
+	garden.scrape(garden.plants()[1], 5)
+	same(Garden.new(path).plants()[1].scraped, 1, "scraping twice changes nothing")
+	garden.scrape(garden.plants()[0], 2)
+	same(Garden.new(path).plants()[0].scraped, -1, "a built plant has no rust to scrape")
+
+
+func test_a_scrape_that_couldnt_be_saved_goes_in_with_the_next_save() -> void:
+	var path := _folder("scraped-busy").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1, Garden.Outcome.RUSTED))
+	garden.record(_plant(2))
+	garden.lock_wait_ms = 0
+	DirAccess.make_dir_absolute(path + ".lock")
+	garden.scrape(garden.plants()[1], 1)
+	same(garden.problem(), Garden.Problem.BUSY, "another Airship holds the lock")
+	same(garden.plants()[1].scraped, 1, "still shown")
+	same(Garden.new(path).plants()[1].scraped, -1, "not in the file yet")
+	DirAccess.remove_absolute(path + ".lock")
+	garden.record(_plant(3))
+	same(garden.plants()[2].scraped, 1, "still shown after the garden is read again")
+	same(Garden.new(path).plants()[2].scraped, 1, "and saved with the next plant")
+
+
+func test_two_windows_scraping_the_same_plant_keep_the_first_mark() -> void:
+	var path := _folder("scraped-two").path_join("garden.json")
+	var one := Garden.new(path)
+	one.record(_plant(1, Garden.Outcome.RUSTED))
+	one.record(_plant(2))
+	var two := Garden.new(path)
+	one.scrape(one.plants()[1], 1)
+	two.scrape(two.plants()[1], 4)
+	same(Garden.new(path).plants()[1].scraped, 1, "the first one's mark stands")
+	same(two.plants()[1].scraped, 1, "and the second window sees it")
+
+
+func test_a_bad_scraped_mark_is_not_a_garden() -> void:
+	for bad: Variant in [-1, 1.5, "one", null]:
+		var entry := Garden._plant_to(_plant(1, Garden.Outcome.RUSTED))
+		entry["scraped"] = bad
+		check(Garden._plant_from(entry) == null, "not a plant: scraped %s" % str(bad))
+	var built := Garden._plant_to(_plant(1))
+	built["scraped"] = 2
+	check(Garden._plant_from(built) == null, "a built plant can't be scraped")
+
+
+func test_twin_rusted_plants_can_both_be_scraped() -> void:
+	var path := _folder("scraped-twins").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1, Garden.Outcome.RUSTED))
+	garden.record(_plant(1, Garden.Outcome.RUSTED))
+	garden.record(_plant(2))
+	garden.record(_plant(3))
+	garden.scrape(garden.plants()[3], 1)
+	garden.scrape(garden.plants()[2] if garden.plants()[2].scraped < 0 else garden.plants()[3], 2)
+	var again := Garden.new(path)
+	check(again.plants()[2].scraped >= 0 and again.plants()[3].scraped >= 0, "both marked in the file")
+	check(not DirAccess.dir_exists_absolute(path + ".lock"), "the lock is let go")
+
+
+func test_scraping_in_a_garden_kept_nowhere_still_shows() -> void:
+	var garden := Garden.new("")
+	garden.record(_plant(1, Garden.Outcome.RUSTED))
+	garden.record(_plant(2))
+	garden.scrape(garden.plants()[1], 1)
+	same(garden.plants()[1].scraped, 1, "shown")
+	same(garden.problem(), Garden.Problem.NO_FOLDER, "and it says it isn't kept")
+	garden.scrape(garden.plants()[1], -1)
+	same(garden.plants()[1].scraped, 1, "a scrape from before any session is no scrape")

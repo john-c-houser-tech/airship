@@ -3,8 +3,8 @@ extends RefCounted
 ## Every plant the arm built or left to rust, kept in one small JSON file so
 ## the garden fills up over days. The newest plant comes first. The file
 ## also keeps how many parts of each kind have been fitted to the airship
-## (core/parts.gd says what the kinds are): the one thing the plants
-## themselves can't tell.
+## (core/parts.gd says what the kinds are), and on a rusted plant whether
+## its rust was scraped off: what the plants' order can't tell.
 ##
 ## Grove's garden.rs is the spec. What Godot can't do the same way:
 ## - No file locks: a lock folder beside the file stands in (making a folder
@@ -71,11 +71,14 @@ class Plant:
 	var when := ""
 	## How long the session was, if the plant was built to the end; else 0.
 	var minutes := 0
+	## For a plant left to rust: how many plants had been built to the end
+	## when its rust was scraped off, or -1 while it is still seized.
+	var scraped := -1
 
 	func equals(other: Plant) -> bool:
 		return blueprint == other.blueprint and plant_seed == other.plant_seed and outcome == other.outcome \
 			and season == other.season and weather == other.weather and progress == other.progress \
-			and when == other.when and minutes == other.minutes
+			and when == other.when and minutes == other.minutes and scraped == other.scraped
 
 
 var lock_wait_ms := LOCK_WAIT_MS
@@ -92,6 +95,9 @@ var _unsaved: Array[Plant] = []
 # Fitted parts only ever grow, so two windows' counts merge by the larger.
 var _fitted: Array[int] = []
 var _file_fitted: Array[int] = []
+# Plants scraped clean here that the file may not know of yet: marked again
+# on whatever is read from it, until a save goes through.
+var _scrapes: Array[Plant] = []
 # Written inside the lock folder while this garden holds it, so it only ever
 # lets go of its own lock.
 var _lock_token := ""
@@ -166,6 +172,27 @@ func fit(counts: Array[int]) -> void:
 	for k in mini(counts.size(), MOST_KINDS):
 		within.append(mini(counts[k], 2147483647))
 	_fitted = _most(_fitted, within)
+	_keep()
+
+
+## Scrapes the rust off `plant`, one of plants() left to rust: from now it
+## stands and works again. `sessions` is how many plants had been built to
+## the end by then (what it makes is counted from there). Saved as fit()
+## saves; if it can't be saved it still shows, and goes in with the next
+## save (never, for a garden whose file can't be read or that is kept
+## nowhere).
+func scrape(plant: Plant, sessions: int) -> void:
+	if plant.outcome != Outcome.RUSTED or plant.scraped >= 0 or sessions < 0:
+		return
+	plant.scraped = mini(sessions, 2147483647)
+	_scrapes.append(plant)
+	_keep()
+
+
+## Saves what changed that isn't a new plant (parts fitted, rust scraped),
+## over the file as it is now and under the lock, and says in `problem()`
+## how it went. What can't be saved stays shown, and waits for the next save.
+func _keep() -> void:
 	if _read_only:
 		if _path.is_empty():
 			_problem = Problem.NO_FOLDER
@@ -195,15 +222,33 @@ func fit(counts: Array[int]) -> void:
 	var plants := found as Array[Plant]
 	for k in range(_unsaved.size() - 1, -1, -1):
 		plants.push_front(_unsaved[k])
+	_scrape_again(plants)
 	_plants = plants
 	_fitted = _most(_fitted, _file_fitted)
 	save_error = _save()
 	_let_go_of_lock()
 	if save_error.is_empty():
 		_unsaved.clear()
+		_scrapes.clear()
 		_problem = Problem.NONE
 	else:
 		_problem = Problem.CANNOT_SAVE
+
+
+## Marks, in plants just read from the file, the ones scraped here that the
+## file doesn't know of yet. A plant another Airship scraped first keeps
+## that one's mark.
+func _scrape_again(plants: Array[Plant]) -> void:
+	for scraped: Plant in _scrapes:
+		for plant: Plant in plants:
+			# The first still seized: one already marked (by another Airship,
+			# or a twin from the same second) is passed over.
+			if plant.scraped < 0 and plant.outcome == Outcome.RUSTED and plant.plant_seed == scraped.plant_seed \
+					and plant.when == scraped.when and plant.blueprint == scraped.blueprint:
+				# The mark as it was made: sessions another Airship completed
+				# meanwhile may earn the plant a part or two it missed. Let it.
+				plant.scraped = scraped.scraped
+				break
 
 
 ## The larger of two counts, kind by kind.
@@ -265,11 +310,13 @@ func record(plant: Plant) -> Change:
 	_unsaved.push_front(plant)
 	for k in range(_unsaved.size() - 1, -1, -1):
 		plants.push_front(_unsaved[k])
+	_scrape_again(plants)
 	_plants = plants
 	save_error = _save()
 	_let_go_of_lock()
 	if save_error.is_empty():
 		_unsaved.clear()
+		_scrapes.clear()
 		_problem = Problem.NONE
 	else:
 		_problem = Problem.CANNOT_SAVE
@@ -474,6 +521,11 @@ static func _plant_from(entry: Variant) -> Plant:
 	plant.outcome = outcome as Outcome
 	plant.progress = float(progress)
 	plant.when = when
+	# Only a rusted plant is ever scraped; the mark is absent until it is.
+	if e.has("scraped"):
+		plant.scraped = _whole(e.get("scraped"))
+		if plant.scraped < 0 or plant.outcome != Outcome.RUSTED:
+			return null
 	plant.season = str(e.get("season", "")) if e.get("season") is String else ""
 	plant.weather = str(e.get("weather", "")) if e.get("weather") is String else ""
 	return plant
@@ -481,7 +533,7 @@ static func _plant_from(entry: Variant) -> Plant:
 
 ## A plant's entry in the file.
 static func _plant_to(plant: Plant) -> Dictionary:
-	return {
+	var entry := {
 		"blueprint": plant.blueprint,
 		"seed": plant.plant_seed,
 		"outcome": OUTCOME_NAMES[plant.outcome],
@@ -491,6 +543,9 @@ static func _plant_to(plant: Plant) -> Dictionary:
 		"when": plant.when,
 		"minutes": plant.minutes,
 	}
+	if plant.scraped >= 0:
+		entry["scraped"] = plant.scraped
+	return entry
 
 
 ## Whether text is a real moment written as YYYY-MM-DDTHH:MM:SS.
