@@ -1,0 +1,111 @@
+#!/bin/sh
+# Airship's checks. Nothing here opens a window on the desktop: the first two
+# steps run headless, and the frame is drawn on a virtual X display.
+#   1. import the project, and make the sounds (tools/make_sounds.gd)
+#   2. run the unit tests in tests/ headless
+#   3. run the main scene headless for a few frames, so every script parses,
+#      and play a train (then a silent one) headless
+#   4. export the package's data file and run it from outside the project
+#   5. draw a frame of a session under xvfb-run, save it and check it
+# Godot keeps going after most errors, so any ERROR or WARNING line in its
+# output fails the run, except the one below.
+set -eu
+cd "$(dirname "$0")/.."
+out=build/test
+rm -rf "$out"
+mkdir -p "$out"
+# Godot leaves out any folder with a .gdignore: the tests' leftovers in
+# build/ (a deliberately broken link among them) are never the project's.
+touch build/.gdignore
+# Godot's own files (logs, editor settings) go here, never in the home folder.
+export XDG_DATA_HOME="$PWD/$out/xdg/data" XDG_CONFIG_HOME="$PWD/$out/xdg/config" XDG_CACHE_HOME="$PWD/$out/xdg/cache"
+
+vsync='WARNING: Could not set V-Sync mode, as changing V-Sync mode is not supported by the graphics driver.'
+
+run() { # name, then the command
+    name=$1
+    shift
+    if ! "$@" >"$out/$name.log" 2>&1; then
+        cat "$out/$name.log"
+        echo "bin/test: $name failed"
+        exit 1
+    fi
+    # A virtual X display can't change V-Sync; the desktop can. That warning
+    # is the display's, not Airship's, so it alone is let through.
+    # Godot prints some problems without either word, such as text it
+    # couldn't decode.
+    if grep -E 'ERROR|WARNING|Unicode parsing error' "$out/$name.log" | grep -vxF "$vsync"; then
+        echo "bin/test: $name: Godot reported the problems above"
+        exit 1
+    fi
+}
+
+run import godot --headless --path . --import
+# The distant sounds aren't committed: made here, as the package build makes
+# them, then imported.
+run sounds godot --headless --path . --script res://tools/make_sounds.gd
+run import-sounds godot --headless --path . --import
+# A test that never returns would hang the run; a minute is far more than they need.
+run unit timeout 60 godot --headless --path . --script res://tests/run.gd
+run parse godot --headless --path . --quit-after 5
+# The sounds, headless with silent audio: a train asked for, given up on
+# after it starts; it must start, then fade and stop, and its picture pass.
+# Then the same at volume 0, which must play nothing (and say nothing
+# wrong) while the picture still passes.
+sounds_run() { # name, volume, then what the log must say
+    name=$1
+    volume=$2
+    shift 2
+    run "$name" env AIRSHIP_SOUND_TEST=train AIRSHIP_SOUND_VOLUME="$volume" AIRSHIP_WEATHER=clear \
+        timeout 60 godot --headless --path . --audio-driver Dummy \
+        -- --build=0 --give-up-at=5 --quit-at=9 --log-sounds
+    if [ "$(grep -E '^(passing|sound):' "$out/$name.log" | tr '\n' ' ')" != "$*" ]; then
+        cat "$out/$name.log"
+        echo "bin/test: $name: expected the sounds to go: $*"
+        exit 1
+    fi
+}
+# The train's picture passes with its sound, and passes even unheard.
+sounds_run sounds 1 "passing: train sound: train passing: stopped sound: stopped "
+sounds_run silent 0 "passing: train passing: stopped "
+# The package's data file, as pkgbuild/PKGBUILD makes it, run on its own from
+# outside the project: in German, with a train, so a translation or a sound
+# left out of the export fails here, not after installing.
+run export godot --headless --path . --export-pack Linux "$PWD/$out/airship.pck"
+mkdir -p "$out/elsewhere"
+run packed sh -c "cd '$out/elsewhere' && AIRSHIP_LANGUAGE=de AIRSHIP_SOUND_TEST=train AIRSHIP_WEATHER=clear \
+    timeout 60 godot --headless --main-pack ../airship.pck --audio-driver Dummy \
+    -- --log-words --build=0 --give-up-at=5 --quit-at=8 --log-sounds"
+expected="says: Wird gebaut. Bleib bei deiner Arbeit; die Leertaste nur zum Aufgeben. sound: train sound: stopped "
+if [ "$(grep -E '^(says|sound):' "$out/packed.log" | tr '\n' ' ')" != "$expected" ]; then
+    cat "$out/packed.log"
+    echo "bin/test: packed: the data file didn't speak German and play the train"
+    exit 1
+fi
+# The package and the project must agree on the version.
+pkgver=$(sed -n 's/^pkgver=//p' pkgbuild/PKGBUILD)
+if [ -z "$pkgver" ] || [ "$pkgver" != "$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)" ]; then
+    echo "bin/test: pkgver in pkgbuild/PKGBUILD and config/version in project.godot differ"
+    exit 1
+fi
+# A snowy session, given up: the falling snow starts and stops cleanly.
+run snowy env AIRSHIP_WEATHER=snow AIRSHIP_SOUND_VOLUME=0 timeout 60 godot --headless --path . --audio-driver Dummy \
+    -- --build=0 --give-up-at=2 --quit-at=4
+# Throwaway prototypes: parsed and run briefly, never looked at.
+run break-task godot --headless --path . --quit-after 5 res://prototypes/break_task/break_task.tscn -- --sessions=3
+run airship-mockup godot --headless --path . --quit-after 5 res://prototypes/airship_mockup/airship_mockup.tscn -- --built=0.9
+run arm-steam godot --headless --path . --quit-after 5 res://prototypes/arm_steam/arm_steam.tscn -- --minute=17
+
+if ! command -v xvfb-run >/dev/null; then
+    echo "bin/test: needs xvfb-run (sudo pacman -S xorg-server-xvfb) to draw a frame off the desktop"
+    exit 1
+fi
+# Silent audio: CI has no sound device, and the tests never play sound aloud.
+# No input method: the desktop's (XMODIFIERS, fcitx on Omarchy) isn't running
+# on the virtual display, and Godot warns when it can't reach it.
+# The frame: midsummer noon in clear weather, ten minutes into a session, so
+# the check knows the sky's colour and the arm is at work.
+run frame env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --build=600 --check --shot="$PWD/$out/frame.png"
+echo "bin/test: passed; the frame is $out/frame.png"

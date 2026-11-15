@@ -1,2 +1,9 @@
 .godot/
 build/
+# Made by bin/make-sounds (tools/make_sounds.gd), never committed: each
+# remake would stay in the history for good.
+/sounds/
+# makepkg leaves these behind.
+/pkgbuild/pkg/
+/pkgbuild/src/
+/pkgbuild/*.pkg.tar.zst

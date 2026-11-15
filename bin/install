@@ -1,0 +1,6 @@
+#!/bin/sh
+# Builds Airship's package and installs it (makepkg asks for your password
+# to install). Run it again after a Godot upgrade if Airship won't start.
+set -eu
+cd "$(dirname "$0")/../pkgbuild"
+exec makepkg -fsi "$@"

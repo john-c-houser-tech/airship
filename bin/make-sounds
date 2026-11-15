@@ -1,0 +1,9 @@
+#!/bin/sh
+# Makes Airship's two distant sounds (tools/make_sounds.gd) into sounds/,
+# headless. The same seeds give the same files. sounds/ is never committed
+# (see .gitignore); bin/test and the package build run this.
+set -eu
+cd "$(dirname "$0")/.."
+godot --headless --path . --import >/dev/null 2>&1
+godot --headless --path . --script res://tools/make_sounds.gd
+godot --headless --path . --import >/dev/null 2>&1

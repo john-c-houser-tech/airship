@@ -1,0 +1,9 @@
+# Keeps the actions CI runs up to date. Godot itself comes from Arch, at the
+# version Omarchy's stable mirror carries. Pull requests go to dev.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly

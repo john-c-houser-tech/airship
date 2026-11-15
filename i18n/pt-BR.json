@@ -1,0 +1,18 @@
+{
+  "Another Airship is saving the garden; this plant will be saved with the next.": "Outro Airship está salvando o jardim; esta planta será salva junto com a próxima.",
+  "Building. Stay with your work; press Space only to give up.": "Construindo. Continue com seu trabalho; pressione Espaço só para desistir.",
+  "Built": "Construída",
+  "Built. Take a five-minute break, then press Space to build again.": "Construída. Faça uma pausa de cinco minutos e depois pressione Espaço para construir de novo.",
+  "Desktop notices can't be sent (notify-send is missing).": "Não é possível enviar notificações da área de trabalho (falta o notify-send).",
+  "Left to rust. Press Space to start building again.": "Abandonada à ferrugem. Pressione Espaço para começar a construir de novo.",
+  "Press Space to start 25 minutes of focus while the arm builds.": "Pressione Espaço para começar 25 minutos de foco enquanto o braço constrói.",
+  "Sounds are off. Press M to turn them on.": "Os sons estão desligados. Pressione M para ligá-los.",
+  "The arm has finished. Take a five-minute break.": "O braço terminou. Faça uma pausa de cinco minutos.",
+  "There's no folder to keep your garden in, so plants aren't being saved.": "Não há uma pasta para guardar seu jardim, então as plantas não estão sendo salvas.",
+  "Your garden couldn't be saved: %s. It will try again with the next plant.": "Não foi possível salvar seu jardim: %s. Uma nova tentativa será feita com a próxima planta.",
+  "Your garden file can't be opened, so new plants aren't being saved.": "O arquivo do seu jardim não pode ser aberto, então as plantas novas não estão sendo salvas.",
+  "Your garden file can't be read, so it's left as it is and new plants aren't saved.": "O arquivo do seu jardim não pode ser lido, então ele fica como está e as plantas novas não são salvas.",
+  "nothing can be written beside the garden (is the disk full, or the folder read-only?)": "nada pode ser gravado ao lado do jardim (o disco está cheio ou a pasta é somente leitura?)",
+  "the garden couldn't be written whole (is the disk full?)": "não foi possível gravar o jardim inteiro (o disco está cheio?)",
+  "the plant's values are out of range": "os valores da planta estão fora do limite permitido"
+}
