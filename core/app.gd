@@ -33,6 +33,10 @@ enum Event {
 	MUTED,
 }
 
+## Built plants that fill in one airship. A stand-in until milestone 6 brings
+## parts and fitting: 40 full sessions, about 17 hours of focus.
+const PLANTS_PER_AIRSHIP := 40
+
 ## The desktop's accent until the theme says otherwise (4d), as in Grove.
 const DEFAULT_ACCENT := Color("#ffd60a")
 
@@ -117,6 +121,12 @@ func set_muted(value: bool) -> Array[int]:
 	muted = value
 	Settings.remember_muted(options.settings_file, muted)
 	return [Event.MUTED]
+
+
+## How far the airship in the hangar is built, 0 to 1: one fortieth for
+## each plant built to the end. Rusted plants add nothing.
+func airship_progress() -> float:
+	return minf(float(garden.built()) / PLANTS_PER_AIRSHIP, 1.0)
 
 
 ## How loud a sound is played, 0 to 1.

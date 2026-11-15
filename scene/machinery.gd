@@ -1,7 +1,6 @@
 extends Node2D
-## The machinery that never moves: the boiler's body and the hopper's stand.
-## Drawn once; the night and the weather are laid over it by the weather
-## layer.
+## The machinery that never moves: the planter, the boiler's body and the
+## hopper's stand. Drawn once; the window dims it to the hangar's light.
 
 const GROUND := 640.0
 const GAUGE := Vector2(73, 505)
@@ -12,6 +11,7 @@ const IRON := Color(0.24, 0.22, 0.21)
 
 
 func _draw() -> void:
+	_draw_planter()
 	_draw_boiler()
 	draw_line(Vector2(610, GROUND), Vector2(618, 520), IRON, 5.0)
 	draw_line(Vector2(672, GROUND), Vector2(664, 520), IRON, 5.0)
@@ -37,3 +37,15 @@ func _draw_boiler() -> void:
 	var pipe := PackedVector2Array([Vector2(116, 560), Vector2(180, 560), Vector2(180, 612), Vector2(222, 612)])
 	draw_polyline(pipe, COPPER.darkened(0.2), 9.0, true)
 	draw_polyline(pipe, COPPER.lightened(0.1), 3.0, true)
+
+
+## The planter on the hangar's boards that the arm builds in, and the shadow
+## the machinery casts on them.
+func _draw_planter() -> void:
+	draw_colored_polygon(PackedVector2Array([Vector2(-40, 655), Vector2(720, 655), Vector2(700, 700), Vector2(-20, 700)]),
+		Color(0, 0, 0, 0.25))
+	draw_rect(Rect2(320, 626, 260, 40), Color(0.34, 0.22, 0.13))
+	draw_rect(Rect2(320, 626, 260, 6), Color(0.46, 0.31, 0.19))
+	draw_rect(Rect2(330, 632, 240, 8), Color(0.24, 0.17, 0.11))
+	for x: float in [320.0, 576.0]:
+		draw_rect(Rect2(x, 626, 4, 40), BRASS.darkened(0.1))
