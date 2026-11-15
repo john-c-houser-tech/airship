@@ -20,6 +20,7 @@ extends Node2D
 ## language.
 
 const Hangar := preload("res://scene/hangar.gd")
+const Passers := preload("res://scene/passers.gd")
 const Machinery := preload("res://scene/machinery.gd")
 const Workshop := preload("res://scene/workshop.gd")
 const Hud := preload("res://scene/hud.gd")
@@ -50,12 +51,22 @@ var theme: DesktopTheme
 var language: DesktopLanguage
 var notifier: Notifier
 
+# The hangar is painted into two pictures only when it changes, and the
+# pictures are shown every frame: replaying thousands of shapes each frame
+# cost 69% of a core on John's desktop while the arm worked. The outside
+# (sky, clouds, land, railway) and the inside (the garden, the weather, the
+# hangar and the airship, clear where the door shows the outside) are apart
+# so the passers-by go between them.
+var _outside: Hangar
 var _hangar: Hangar
-# The hangar is painted into this picture only when it changes, and the
-# picture is shown every frame: replaying thousands of shapes each frame cost
-# 69% of a core on John's desktop while the arm worked.
-var _hangar_paint: SubViewport
-var _hangar_picture: Sprite2D
+var _paints: Array[SubViewport] = []
+var _pictures: Array[Sprite2D] = []
+var _passers: Passers
+# What is passing (Sounds.Kind, -1 for nothing) and when its sound began, in
+# milliseconds of the window's own clock; or a moment pinned by --passing.
+var _passing := -1
+var _passing_since_ms := 0.0
+var _passing_pinned := -1.0
 var _machinery: Machinery
 var _workshop: Workshop
 var _hud: Hud
@@ -99,6 +110,11 @@ func _ready() -> void:
 			_quit_at = arg.trim_prefix("--quit-at=").to_float()
 		elif arg == "--log-sounds":
 			_log_sounds = true
+		elif arg.begins_with("--passing="):
+			# A passer-by pinned at a moment, for pictures: train:26.
+			var parts := arg.trim_prefix("--passing=").split(":")
+			_passing = Sounds.named(parts[0])
+			_passing_pinned = parts[1].to_float() if parts.size() > 1 else 0.0
 		elif arg == "--log-frames":
 			_log_frames = true
 			RenderingServer.frame_post_draw.connect(func() -> void: _frames_drawn += 1)
@@ -115,25 +131,19 @@ func _ready() -> void:
 	language = DesktopLanguage.new(options.language_file)
 	app.set_language(language.code)
 	notifier = Notifier.new()
-	_hangar = Hangar.new()
-	_hangar_paint = SubViewport.new()
-	_hangar_paint.transparent_bg = false
-	_hangar_paint.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_hangar_paint.add_child(_hangar)
-	add_child(_hangar_paint)
-	_hangar_picture = Sprite2D.new()
-	_hangar_picture.centered = false
-	_hangar_picture.texture = _hangar_paint.get_texture()
+	_outside = _picture_of(Hangar.Painting.OUTSIDE)
+	_hangar = _picture_of(Hangar.Painting.INSIDE)
+	_passers = Passers.new()
 	_machinery = Machinery.new()
 	_workshop = Workshop.new()
 	_hud = Hud.new()
-	for layer: Node2D in [_hangar_picture, _machinery, _workshop, _hud]:
+	for layer: Node2D in [_pictures[0], _passers, _pictures[1], _machinery, _workshop, _hud]:
 		add_child(layer)
 	_fit_hangar_picture()
 	get_window().size_changed.connect(_fit_hangar_picture)
-	# The corner stands on the hangar's floor, seen through its camera.
-	for corner: Node2D in [_machinery, _workshop]:
-		corner.call("stand_in", _hangar)
+	# The corner and the passers-by are seen through the hangar's camera.
+	for seen: Node2D in [_machinery, _workshop, _passers]:
+		seen.call("stand_in", _hangar)
 	_player = AudioStreamPlayer.new()
 	add_child(_player)
 	_workshop.time_scale = app.session.seconds() / Workshop.BuildPlan.SESSION
@@ -178,6 +188,7 @@ func _process(delta: float) -> void:
 		if language.reload():
 			events.append_array(app.set_language(language.code))
 	_heard(events)
+	_show_passing()
 	# While building, the arm follows the clock every frame (as often as the
 	# pace allows), so it sets off again the moment its rest is over.
 	if app.session.state() == Session.State.BUILDING:
@@ -241,10 +252,20 @@ func _heard(events: Array[int]) -> void:
 				_hud.catalog = app.catalog
 				_hud.queue_redraw()
 			App.Event.SOUND:
-				if not app.muted and _shot_path.is_empty():
-					_play(app.sound)
+				# Its picture passes by whether or not the sound is heard; one
+				# that comes due while another passes is let go, as its sound
+				# is.
+				if _passing < 0:
+					_passing = app.sound
+					_passing_since_ms = _alive_ms
+					_passing_pinned = -1.0
+					if _log_sounds:
+						print("passing: %s" % Sounds.NAMES[app.sound])
+					if not app.muted and _shot_path.is_empty():
+						_play(app.sound)
 			App.Event.SOUNDS_ENDED:
 				_fade_out(2.0)
+				_stop_passing()
 			App.Event.MUTED:
 				_hud.muted = app.muted
 				_hud.queue_redraw()
@@ -267,9 +288,13 @@ func _show_everything() -> void:
 ## The hangar and what's seen through its door: drawn again only when the
 ## light, the weather or the garden (and so the airship) changes.
 func _show_sky() -> void:
-	if _hangar.show_world(app.daylight, app.weather.now(), app.airship_progress(), app.garden.built()):
-		_hangar_paint.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var plants := app.garden.built()
+	_outside.show_world(app.daylight, app.weather.now(), app.airship_progress(), plants)
+	if _hangar.show_world(app.daylight, app.weather.now(), app.airship_progress(), plants):
+		for paint: SubViewport in _paints:
+			paint.render_target_update_mode = SubViewport.UPDATE_ONCE
 		_machinery.queue_redraw()
+		_passers.queue_redraw()
 	var lamplight := 0.45 + 0.55 * app.daylight.ambient
 	# The golden hour reaches the corner too.
 	var tint := Color(WORKSHOP_TINT * lamplight, 1.0).lerp(app.daylight.warm, app.daylight.warmth * 0.2)
@@ -308,19 +333,70 @@ func _fade_out(seconds: float) -> void:
 func _fit_hangar_picture() -> void:
 	var window := get_window().size
 	var side := maxi(mini(window.x, window.y), 1)
-	if side == _hangar_paint.size.x:
+	if side == _paints[0].size.x:
 		return
-	_hangar_paint.size = Vector2i(side, side)
-	_hangar.scale = Vector2.ONE * (side / Hangar.SIZE)
-	_hangar_picture.scale = Vector2.ONE * (Hangar.SIZE / side)
-	_hangar.queue_redraw()
-	_hangar_paint.render_target_update_mode = SubViewport.UPDATE_ONCE
+	for k in _paints.size():
+		_paints[k].size = Vector2i(side, side)
+		(_paints[k].get_child(0) as Hangar).scale = Vector2.ONE * (side / Hangar.SIZE)
+		_pictures[k].scale = Vector2.ONE * (Hangar.SIZE / side)
+		(_paints[k].get_child(0) as Hangar).queue_redraw()
+		_paints[k].render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+## A part of the hangar, painted off screen into a picture shown each frame.
+func _picture_of(which: Hangar.Painting) -> Hangar:
+	var painter := Hangar.new()
+	painter.painting = which
+	var paint := SubViewport.new()
+	# The inside is clear where the door shows the outside.
+	paint.transparent_bg = which == Hangar.Painting.INSIDE
+	paint.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	paint.add_child(painter)
+	add_child(paint)
+	var picture := Sprite2D.new()
+	picture.centered = false
+	picture.texture = paint.get_texture()
+	if which == Hangar.Painting.INSIDE:
+		# Godot's own clear pictures hold premultiplied colour: blended as
+		# plain alpha, glows and the golden hour's warmth turned to dark
+		# halos over the view.
+		var blend := CanvasItemMaterial.new()
+		blend.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+		picture.material = blend
+	_paints.append(paint)
+	_pictures.append(picture)
+	return painter
+
+
+## Moves whatever is passing outside to where it is now: where its sound
+## has got to, while it plays (so the picture keeps with it, even after the
+## laptop wakes), else the window's own clock (muted).
+func _show_passing() -> void:
+	if _passing < 0:
+		return
+	var seconds := (_alive_ms - _passing_since_ms) / 1000.0
+	if _passing_pinned >= 0.0:
+		seconds = _passing_pinned
+	elif _player.playing and _player.stream == load(Sounds.FILES[_passing]):
+		seconds = _player.get_playback_position()
+	_passers.show_passing(_passing, seconds)
+	if not _passers.passing():
+		_stop_passing()
+
+
+func _stop_passing() -> void:
+	if _passing < 0:
+		return
+	_passing = -1
+	_passers.show_passing(-1, 0.0)
+	if _log_sounds:
+		print("passing: stopped")
 
 
 ## Draws as often as what's on screen needs.
 func _pace() -> void:
 	var building := app.session.state() == Session.State.BUILDING
-	if building and _workshop.resting_for() < STEAM_FADE_SECONDS:
+	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0):
 		Engine.max_fps = WORKING_FPS
 		OS.low_processor_usage_mode_sleep_usec = DEFAULT_SLEEP_USEC
 	elif building:
@@ -346,7 +422,7 @@ func _take_shot() -> void:
 	if not app.weather.now().equals(Weather.conditions_of(Weather.Kind.CLEAR)):
 		problems.append("the check needs clear weather (AIRSHIP_WEATHER=clear)")
 	var through_door := image.get_pixel(SKY_PIXEL.x, SKY_PIXEL.y)
-	var sky := _hangar.clear_sky_at(app.daylight, SKY_PIXEL.y)
+	var sky := _outside.clear_sky_at(app.daylight, SKY_PIXEL.y)
 	if absf(through_door.r - sky.r) > 0.04 or absf(through_door.g - sky.g) > 0.04 or absf(through_door.b - sky.b) > 0.04:
 		problems.append("the sky through the door is %s, the core's sky there is %s" % [through_door, sky])
 	var boiler := image.get_pixel(BOILER_PIXEL.x, BOILER_PIXEL.y)

@@ -49,8 +49,9 @@ run import-sounds godot --headless --path . --import
 run unit timeout 60 godot --headless --path . --script res://tests/run.gd
 run parse godot --headless --path . --quit-after 5
 # The sounds, headless with silent audio: a train asked for, given up on
-# after it starts; it must start, then fade and stop. Then the same at
-# volume 0, which must play nothing (and say nothing wrong).
+# after it starts; it must start, then fade and stop, and its picture pass.
+# Then the same at volume 0, which must play nothing (and say nothing
+# wrong) while the picture still passes.
 sounds_run() { # name, volume, then what the log must say
     name=$1
     volume=$2
@@ -58,14 +59,15 @@ sounds_run() { # name, volume, then what the log must say
     run "$name" env AIRSHIP_SOUND_TEST=train AIRSHIP_SOUND_VOLUME="$volume" AIRSHIP_WEATHER=clear \
         timeout 60 godot --headless --path . --audio-driver Dummy \
         -- --build=0 --give-up-at=5 --quit-at=9 --log-sounds
-    if [ "$(grep '^sound:' "$out/$name.log" | tr '\n' ' ')" != "$*" ]; then
+    if [ "$(grep -E '^(passing|sound):' "$out/$name.log" | tr '\n' ' ')" != "$*" ]; then
         cat "$out/$name.log"
         echo "bin/test: $name: expected the sounds to go: $*"
         exit 1
     fi
 }
-sounds_run sounds 1 "sound: train sound: stopped "
-sounds_run silent 0 ""
+# The train's picture passes with its sound, and passes even unheard.
+sounds_run sounds 1 "passing: train sound: train passing: stopped sound: stopped "
+sounds_run silent 0 "passing: train passing: stopped "
 # The package's data file, as pkgbuild/PKGBUILD makes it, run on its own from
 # outside the project: in German, with a train, so a translation or a sound
 # left out of the export fails here, not after installing.
