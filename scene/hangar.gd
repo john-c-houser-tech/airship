@@ -50,11 +50,16 @@ var daylight: Daylight
 var conditions := Weather.Conditions.new()
 ## How many finished plants stand in the garden outside (up to six show).
 var garden_plants := 0
+## While the arm works, rain and snow are drawn moving (scene/falling.gd)
+## instead of still here.
+var moving_weather := false
 ## Which part this one paints: the window keeps the outside (sky, clouds,
 ## land, railway) and the inside (the garden, rain, snow and fog, the hangar
 ## and the airship, clear where the door shows the outside) as two pictures,
 ## so a train or an airship passing goes between them: behind the door's
 ## frame, the ship, the garden and the weather. ALL paints both, in order.
+## While the arm works, rain and snow move instead (scene/falling.gd, also
+## between the pictures), and the inside paints them only when still.
 enum Painting { ALL, OUTSIDE, INSIDE }
 var painting := Painting.ALL
 ## The railway across the valley: this far beyond the door.
@@ -118,7 +123,8 @@ func _ready() -> void:
 ## Shows the light and weather, how far the airship is built, and how many
 ## plants stand in the garden. Draws again only for these, and says whether
 ## it will (the window keeps the hangar as a picture, remade only then).
-func show_world(daylight_: Daylight, conditions_: Weather.Conditions, built_: float, garden_plants_: int) -> bool:
+func show_world(daylight_: Daylight, conditions_: Weather.Conditions, built_: float, garden_plants_: int, moving := false) -> bool:
+	moving_weather = moving
 	daylight = daylight_
 	conditions = conditions_
 	built = clampf(built_, 0.0, 1.0)
@@ -144,7 +150,7 @@ func _what_shows() -> String:
 		steps.call(daylight.stars, 10.0), steps.call(daylight.warmth, 20.0),
 		steps.call(conditions.cloud, 10.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
 		steps.call(conditions.snow, 10.0), garden_plants, daylight.top.to_html(false).left(5), str(built)] \
-		+ " %d %d" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0)]
+		+ " %d %d %s" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather)]
 
 
 ## Where the light comes from: the sun across the door's view by day, the
@@ -591,7 +597,7 @@ func _draw_clouds() -> void:
 func _draw_weather_outside() -> void:
 	var lit := 0.15 + 0.85 * _day
 	var horizon := SIZE * 0.5 + _focal * tan(_pitch)
-	if conditions.rain > 0.0:
+	if conditions.rain > 0.0 and not moving_weather:
 		var random := Random.new(13)
 		for k in 220:
 			var top := Vector2(random.unit() * SIZE, random.unit() * SIZE * 0.75)
@@ -604,7 +610,7 @@ func _draw_weather_outside() -> void:
 			PackedColorArray([veil, veil, thick, thick]))
 		_fan(PackedVector2Array([Vector2(0, horizon + 40), Vector2(SIZE, horizon + 40), Vector2(SIZE, SIZE), Vector2(0, SIZE)]),
 			_same(thick, 4))
-	if conditions.snow > 0.0:
+	if conditions.snow > 0.0 and not moving_weather:
 		var random := Random.new(17)
 		for k in 240:
 			_disc(Vector2(random.unit() * SIZE, random.unit() * SIZE * 0.75), 0.9 + random.unit() * 1.4,

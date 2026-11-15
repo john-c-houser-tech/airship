@@ -203,3 +203,23 @@ func box_front(left: float, right: float, high: float, deep: float, base: Color)
 	var face := PackedVector2Array([_screen(world(Vector2(left, top_y), front)), _screen(world(Vector2(right, top_y), front)),
 		_screen(world(Vector2(right, floor_y), front)), _screen(world(Vector2(left, floor_y), front))])
 	draw_colored_polygon(face, lit(base, _toward))
+
+
+## A band round an upright cylinder (as cylinder() draws it), at flat height
+## `y`: the half that faces the eye, following its curve, rivets on it.
+func band(centre_x: float, y: float, r: float, colour: Color, rivet: Color) -> void:
+	var axis := world(Vector2(centre_x, y))
+	var view := hangar._cam - axis
+	view.y = 0.0
+	view = view.normalized()
+	var edge := view.cross(Vector3.UP).normalized()
+	var points := PackedVector2Array()
+	var sizes := PackedFloat32Array()
+	for k in 13:
+		var t := PI * k / 12.0
+		var seen := _seen(axis + (edge * cos(t) + view * sin(t)) * r * FEET * 1.01)
+		points.append(Vector2(seen.x, seen.y))
+		sizes.append(seen.z)
+	draw_polyline(points, colour, maxf(3.0 * sizes[6], 0.6), true)
+	for k in range(1, 12, 2):
+		draw_circle(points[k], maxf(1.8 * sizes[k], 0.5), rivet)

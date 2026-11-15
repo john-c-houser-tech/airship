@@ -29,7 +29,8 @@ archived), whose rules and tests are the spec for Airship's rules.
   the airship, clear where the door shows the outside). `passers.gd` draws
   between them: the night train on the railway and the airship crossing the
   sky by day, each while its sound plays, every frame from how far into the
-  sound it is. The
+  sound it is; and `falling.gd`, rain and snow moving while the arm works
+  (still, painted into the inside picture, between sessions). The
   workshop corner stands on the hangar's floor in the left foreground, seen
   through the same camera (`corner_canvas.gd`): `machinery.gd` (boiler,
   planter, hopper) is drawn when the hangar is, `workshop.gd` (the arm and
@@ -49,7 +50,8 @@ archived), whose rules and tests are the spec for Airship's rules.
 - `pkgbuild/` packages Airship for Arch: one data file (`airship.pck`,
   exported by the `Linux` preset in `export_presets.cfg`) that Arch's
   `godot` runs through the `airship` launcher, with a desktop entry, an
-  icon (a placeholder until milestone 5's art) and a pacman hook that
+  icon (milestone 5's; checked against look-alikes: the Airship company's
+  blue mark and OpenStack Airship's silhouette-over-an-A) and a pacman hook that
   speaks up when Godot is upgraded. `bin/install` builds and installs it.
   `pkgver` and `config/version` in `project.godot` must match (bin/test
   checks), and bin/test runs the exported file in German with a train.

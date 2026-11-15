@@ -21,6 +21,7 @@ extends Node2D
 
 const Hangar := preload("res://scene/hangar.gd")
 const Passers := preload("res://scene/passers.gd")
+const Falling := preload("res://scene/falling.gd")
 const Machinery := preload("res://scene/machinery.gd")
 const Workshop := preload("res://scene/workshop.gd")
 const Hud := preload("res://scene/hud.gd")
@@ -33,6 +34,10 @@ const WORKSHOP_TINT := Color(0.86, 0.80, 0.72)
 # of a second at rest and a tenth between sessions.
 const WORKING_FPS := 30
 const RESTING_FPS := 6
+# Falling snow is slow enough for this; rain needs WORKING_FPS.
+const SNOW_FPS := 15
+# Lighter than this, rain and snow don't set the pace.
+const FALLING_THRESHOLD := 0.15
 const IDLE_FPS := 10
 const IDLE_SLEEP_USEC := 100_000
 const DEFAULT_SLEEP_USEC := 6900
@@ -62,6 +67,7 @@ var _hangar: Hangar
 var _paints: Array[SubViewport] = []
 var _pictures: Array[Sprite2D] = []
 var _passers: Passers
+var _falling: Falling
 # What is passing (Sounds.Kind, -1 for nothing) and when its sound began, in
 # milliseconds of the window's own clock; or a moment pinned by --passing.
 var _passing := -1
@@ -134,10 +140,11 @@ func _ready() -> void:
 	_outside = _picture_of(Hangar.Painting.OUTSIDE)
 	_hangar = _picture_of(Hangar.Painting.INSIDE)
 	_passers = Passers.new()
+	_falling = Falling.new()
 	_machinery = Machinery.new()
 	_workshop = Workshop.new()
 	_hud = Hud.new()
-	for layer: Node2D in [_pictures[0], _passers, _pictures[1], _machinery, _workshop, _hud]:
+	for layer: Node2D in [_pictures[0], _passers, _falling, _pictures[1], _machinery, _workshop, _hud]:
 		add_child(layer)
 	_fit_hangar_picture()
 	get_window().size_changed.connect(_fit_hangar_picture)
@@ -238,6 +245,9 @@ func _heard(events: Array[int]) -> void:
 	for event: int in events:
 		match event:
 			App.Event.STATE, App.Event.PROGRESS:
+				if event == App.Event.STATE:
+					# Rain and snow move while the arm works, and are still otherwise.
+					_show_sky()
 				_workshop.show_session(app.session.state(), app.session.progress())
 				_hud.state = app.session.state()
 				_hud.remaining = app.session.remaining()
@@ -289,8 +299,11 @@ func _show_everything() -> void:
 ## light, the weather or the garden (and so the airship) changes.
 func _show_sky() -> void:
 	var plants := app.garden.built()
-	_outside.show_world(app.daylight, app.weather.now(), app.airship_progress(), plants)
-	if _hangar.show_world(app.daylight, app.weather.now(), app.airship_progress(), plants):
+	var moving := app.session.state() == Session.State.BUILDING
+	var now := app.weather.now()
+	_falling.show_weather(now.rain, now.snow, moving, 0.35 + 0.65 * app.daylight.ambient)
+	_outside.show_world(app.daylight, now, app.airship_progress(), plants, moving)
+	if _hangar.show_world(app.daylight, now, app.airship_progress(), plants, moving):
 		for paint: SubViewport in _paints:
 			paint.render_target_update_mode = SubViewport.UPDATE_ONCE
 		_machinery.queue_redraw()
@@ -396,11 +409,13 @@ func _stop_passing() -> void:
 ## Draws as often as what's on screen needs.
 func _pace() -> void:
 	var building := app.session.state() == Session.State.BUILDING
-	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0):
+	var raining := building and app.weather.now().rain > FALLING_THRESHOLD
+	var snowing := building and app.weather.now().snow > FALLING_THRESHOLD
+	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0) or raining:
 		Engine.max_fps = WORKING_FPS
 		OS.low_processor_usage_mode_sleep_usec = DEFAULT_SLEEP_USEC
 	elif building:
-		Engine.max_fps = RESTING_FPS
+		Engine.max_fps = SNOW_FPS if snowing else RESTING_FPS
 		OS.low_processor_usage_mode_sleep_usec = DEFAULT_SLEEP_USEC
 	else:
 		Engine.max_fps = IDLE_FPS
