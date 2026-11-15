@@ -49,6 +49,8 @@ func next_step() -> String:
 			return catalog.translate("Your plants have made parts. Click the garden, or press Enter, to collect them.")
 		App.BreakStep.FIT:
 			return catalog.translate("You have parts for the airship. Click the airship, or press Enter, to fit them.")
+		App.BreakStep.LAUNCH:
+			return catalog.translate("The airship is finished! Press L to launch it over the pass. It won't come back: a new valley begins.")
 	match state:
 		Session.State.BUILDING:
 			return catalog.translate("Building. Stay with your work; press Space only to give up.")

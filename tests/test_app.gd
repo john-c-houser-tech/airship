@@ -342,3 +342,33 @@ func test_the_break_scrapes_rust_after_a_completed_session() -> void:
 	same(Parts.made(app.garden.plants()), [0, 0, 3, 1, 0] as Array[int], "the scraped plant made its part in the next session")
 	var again := App.new(app.options)
 	same(again.garden.plants()[2].scraped, 2, "kept in the garden file")
+
+
+func test_a_finished_airship_is_launched_to_the_next_valley() -> void:
+	var app := _app(25 * 60, "launch")
+	var sessions := 0
+	while app.airship_progress() < 1.0 and sessions < 60:
+		app.start(app.blueprint(), sessions + 1)
+		app.advance(25 * 60 * 1000)
+		sessions += 1
+		while app.break_step() != App.BreakStep.NONE and app.break_step() != App.BreakStep.LAUNCH:
+			app.take_break_step()
+	check(sessions >= 12 and sessions <= 20, "a ship built in %d sessions, breaks taken" % sessions)
+	same(app.break_step(), App.BreakStep.LAUNCH, "every part fitted: launch")
+	var built := app.garden.plants().size()
+	same(app.take_break_step(), [App.Event.BREAK, App.Event.GARDEN, App.Event.LAUNCHED] as Array[int], "launching says so")
+	same(app.garden.valley(), 1, "the next valley")
+	same(app.airship_progress(), 0.0, "a new airship, nothing fitted")
+	same(app.break_step(), App.BreakStep.NONE, "and nothing more to do")
+	same(app.garden.plants().size(), built, "the old garden is kept as history")
+	same(app.garden.valley_plants().size(), 0, "the new garden is empty")
+	same(app.blueprint(), Parts.Kind.GIRDER_REED, "the blueprints start over")
+	app.start(app.blueprint(), 99)
+	app.advance(25 * 60 * 1000)
+	same(app.garden.valley_plants().size(), 1, "the first plant of the new valley")
+	same(app.garden.plants()[0].valley, 1, "which it remembers")
+	app.take_break_step()
+	same(app.break_step(), App.BreakStep.NONE, "the old valley's plants make nothing here")
+	var again := App.new(app.options)
+	same(again.garden.valley(), 1, "kept in the garden file")
+	same(again.airship_progress(), 0.0, "with the new airship as it stands")

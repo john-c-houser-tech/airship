@@ -73,6 +73,14 @@ var _falling: Falling
 var _passing := -1
 var _passing_since_ms := 0.0
 var _passing_pinned := -1.0
+# The launched airship's flight: when it began by the window's clock (below
+# zero: none), or the moment a picture pins it at.
+var _launch_since_ms := -1.0
+var _launch_pinned := -1.0
+# Drawn twice: the part beyond the door, and the part still in the hangar.
+var _ship: Hangar
+var _ship_inside: Hangar
+var _gold: ColorRect
 var _machinery: Machinery
 var _workshop: Workshop
 var _hud: Hud
@@ -121,8 +129,14 @@ func _ready() -> void:
 		elif arg == "--log-sounds":
 			_log_sounds = true
 		elif arg.begins_with("--passing="):
-			# A passer-by pinned at a moment, for pictures: train:26.
+			# A passer-by, or the launch, pinned at a moment, for pictures:
+			# train:26.
 			var parts := arg.trim_prefix("--passing=").split(":")
+			if parts[0] == "launch":
+				# The launch, pinned the same way: launch:12.
+				_launch_pinned = parts[1].to_float() if parts.size() > 1 else 0.0
+				_launch_since_ms = 0.0
+				continue
 			_passing = Sounds.named(parts[0])
 			_passing_pinned = parts[1].to_float() if parts.size() > 1 else 0.0
 		elif arg == "--log-frames":
@@ -144,11 +158,21 @@ func _ready() -> void:
 	_outside = _picture_of(Hangar.Painting.OUTSIDE)
 	_hangar = _picture_of(Hangar.Painting.INSIDE)
 	_passers = Passers.new()
+	_ship = Hangar.new()
+	_ship.painting = Hangar.Painting.SHIP
+	_ship.beyond_door = true
+	_ship_inside = Hangar.new()
+	_ship_inside.painting = Hangar.Painting.SHIP
 	_falling = Falling.new()
 	_machinery = Machinery.new()
 	_workshop = Workshop.new()
 	_hud = Hud.new()
-	for layer: Node2D in [_pictures[0], _passers, _falling, _pictures[1], _machinery, _workshop, _hud]:
+	# The low sun's gold lies over the hangar and all seen through its door,
+	# the launched airship too, and under the machinery.
+	_gold = ColorRect.new()
+	_gold.size = Vector2(Hangar.SIZE, Hangar.SIZE)
+	_gold.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for layer: CanvasItem in [_pictures[0], _passers, _ship, _falling, _pictures[1], _ship_inside, _gold, _machinery, _workshop, _hud]:
 		add_child(layer)
 	_fit_hangar_picture()
 	get_window().size_changed.connect(_fit_hangar_picture)
@@ -199,7 +223,9 @@ func _process(delta: float) -> void:
 		if language.reload():
 			events.append_array(app.set_language(language.code))
 	_heard(events)
+	_gold.color = app.daylight.warm_tint()
 	_show_passing()
+	_show_launch()
 	# While building, the arm follows the clock every frame (as often as the
 	# pace allows), so it sets off again the moment its rest is over.
 	if app.session.state() == Session.State.BUILDING:
@@ -234,7 +260,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var through_door := Geometry2D.is_point_in_polygon(click.position, _hangar.door_outline())
 		var step := app.break_step()
 		var wants_garden := step != App.BreakStep.FIT
-		if step != App.BreakStep.NONE and through_door == wants_garden:
+		if step != App.BreakStep.NONE and step != App.BreakStep.LAUNCH and through_door == wants_garden:
 			_heard(app.take_break_step())
 		return
 	var key := event as InputEventKey
@@ -245,7 +271,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key.keycode == KEY_M:
 		_heard(app.set_muted(not app.muted))
 		return
-	if key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER:
+	# The launch can't be undone, so it has a key of its own: neither the
+	# Enter nor the click that fitted the last parts sets it off.
+	var launch := app.break_step() == App.BreakStep.LAUNCH
+	if (key.keycode == KEY_L and launch) or ((key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER) and not launch):
 		_heard(app.take_break_step())
 		return
 	if key.keycode == KEY_LEFT or key.keycode == KEY_RIGHT:
@@ -285,6 +314,12 @@ func _heard(events: Array[int]) -> void:
 				_workshop.planted = not app.on_planter()
 				_workshop.queue_redraw()
 				_show_break()
+			App.Event.LAUNCHED:
+				_launch_since_ms = _alive_ms
+				_launch_pinned = -1.0
+				if not app.muted and _shot_path.is_empty():
+					_play(Sounds.Kind.AIRSHIP)
+				_pace()
 			App.Event.BLUEPRINT:
 				_hud.next_plant = Parts.kind_of(app.blueprint())
 				_hud.queue_redraw()
@@ -342,7 +377,7 @@ func _show_sky() -> void:
 	# The garden's plants, oldest first: the kinds of those that stand, and
 	# the rusted ones as they seized.
 	var plants: Array[int] = []
-	for plant: Garden.Plant in app.garden.plants():
+	for plant: Garden.Plant in app.garden.valley_plants():
 		var kind := Parts.kind_of(plant.blueprint)
 		plants.append(kind if Parts.stands(plant) else Hangar.rusted(kind, plant.progress))
 	plants.reverse()
@@ -441,11 +476,26 @@ func _show_passing() -> void:
 	var seconds := (_alive_ms - _passing_since_ms) / 1000.0
 	if _passing_pinned >= 0.0:
 		seconds = _passing_pinned
-	elif _player.playing and _player.stream == load(Sounds.FILES[_passing]):
+	elif _launch_since_ms < 0.0 and _player.playing and _player.stream == load(Sounds.FILES[_passing]):
 		seconds = _player.get_playback_position()
 	_passers.show_passing(_passing, seconds)
 	if not _passers.passing():
 		_stop_passing()
+
+
+## The launched airship's flight, drawn every frame while it lasts: the
+## part still in the hangar over its inside, the part beyond the door
+## under it, so the door frames it.
+func _show_launch() -> void:
+	if _launch_since_ms < 0.0:
+		return
+	var seconds := _launch_pinned if _launch_pinned >= 0.0 else (_alive_ms - _launch_since_ms) / 1000.0
+	_ship.show_launch(app.daylight, app.weather.now(), seconds)
+	if seconds <= Hangar.LAUNCH_OUT_SECONDS or _ship_inside.launch_seconds >= 0.0:
+		_ship_inside.show_launch(app.daylight, app.weather.now(), seconds)
+	if _ship.launch_seconds < 0.0:
+		_launch_since_ms = -1.0
+		_pace()
 
 
 func _stop_passing() -> void:
@@ -462,7 +512,7 @@ func _pace() -> void:
 	var building := app.session.state() == Session.State.BUILDING
 	var raining := building and app.weather.now().rain > FALLING_THRESHOLD
 	var snowing := building and app.weather.now().snow > FALLING_THRESHOLD
-	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0) or raining:
+	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0) or (_launch_since_ms >= 0.0 and _launch_pinned < 0.0) or raining:
 		Engine.max_fps = WORKING_FPS
 		OS.low_processor_usage_mode_sleep_usec = DEFAULT_SLEEP_USEC
 	elif building:

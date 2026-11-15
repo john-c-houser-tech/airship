@@ -6,7 +6,8 @@
 #   3. run the main scene headless for a few frames, so every script parses,
 #      and play a train (then a silent one) headless
 #   4. export the package's data file and run it from outside the project
-#   5. draw a frame of a session under xvfb-run, save it and check it
+#   5. draw a frame of a session under xvfb-run, save it and check it, and
+#      a frame of the launch
 # Godot keeps going after most errors, so any ERROR or WARNING line in its
 # output fails the run, except the one below.
 set -eu
@@ -108,4 +109,8 @@ fi
 run frame env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
     timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
     -- --build=600 --check --shot="$PWD/$out/frame.png"
+# The launch, pinned as the airship passes the door: both halves are drawn.
+run launch env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --passing=launch:8 --shot="$PWD/$out/launch.png"
 echo "bin/test: passed; the frame is $out/frame.png"

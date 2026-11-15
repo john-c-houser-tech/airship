@@ -229,14 +229,25 @@ func _draw_exhaust(light: float) -> void:
 			draw_circle(Vector2(at.x, at.y), size, Color(shade, shade, shade + 0.01, minf(alpha * 1.6, 1.0)))
 
 
-## By day, an airship crossing the sky far off, right to left: a cream
-## cloth hull, its gondola, fins and spinning propellers, and a thread of
-## steam.
+## By day, an airship crossing the sky far off, right to left, with a
+## thread of steam.
 func _draw_airship() -> void:
 	var duration := float(Sounds.SECONDS[Sounds.Kind.AIRSHIP])
 	var x := AIRSHIP_SPEED * (duration * 0.5 - seconds)
-	var z: float = hangar.DOOR_Z + AIRSHIP_Z_BEYOND
-	var y := AIRSHIP_HEIGHT
+	_draw_ship(Vector3(x, AIRSHIP_HEIGHT, hangar.DOOR_Z + AIRSHIP_Z_BEYOND), 1.0, -1.0, AIRSHIP_SPEED)
+
+
+## An airship side on, its middle at `centre`, `size` times the far one's
+## 240 feet, its nose to the right (`facing` 1) or the left (-1): a cream
+## cloth hull and fins, its gondola, the steam engine and propeller behind
+## it, the stack's exhaust left behind at `speed` feet a second.
+func _draw_ship(centre: Vector3, size: float, facing: float, speed: float) -> void:
+	var x := centre.x
+	var y := centre.y
+	var z := centre.z
+	# Along the ship toward its tail, and its scale.
+	var back := -facing * size
+	var up := size
 	var light := _outside_light()
 	var cloth := _dim(Color(0.88, 0.83, 0.70), light)
 	var shade := _dim(Color(0.70, 0.65, 0.55), light)
@@ -245,27 +256,84 @@ func _draw_airship() -> void:
 	var colours := PackedColorArray()
 	for k in 28:
 		var t := TAU * k / 28.0
-		var p := _view(Vector3(x + cos(t) * 120.0, y + sin(t) * 28.0, z))
+		var p := _view(Vector3(x + cos(t) * 120.0 * size, y + sin(t) * 28.0 * up, z))
 		hull.append(Vector2(p.x, p.y))
 		colours.append(cloth if sin(t) > 0.0 else shade)
 	draw_polygon(hull, colours)
 	for rib in range(-3, 4):
-		var rx := x + rib * 30.0
-		var top := _view(Vector3(rx, y + 27.0 * sqrt(maxf(0.0, 1.0 - pow(rib * 30.0 / 120.0, 2))), z - 1))
-		var bottom := _view(Vector3(rx, y - 27.0 * sqrt(maxf(0.0, 1.0 - pow(rib * 30.0 / 120.0, 2))), z - 1))
+		var rx := x + rib * 30.0 * size
+		var half := 27.0 * up * sqrt(maxf(0.0, 1.0 - pow(rib * 30.0 / 120.0, 2)))
+		var top := _view(Vector3(rx, y + half, z - 1))
+		var bottom := _view(Vector3(rx, y - half, z - 1))
 		draw_line(Vector2(top.x, top.y), Vector2(bottom.x, bottom.y), _dim(Color(0.62, 0.48, 0.28, 0.6), light), 1.0, true)
-	# Fins at the tail (on the right: it flies left).
-	_quad(Vector3(x + 100, y + 10, z - 1), Vector3(x + 128, y + 26, z - 1), Vector3(x + 128, y + 4, z - 1), Vector3(x + 112, y, z - 1), shade)
-	_quad(Vector3(x + 100, y - 10, z - 1), Vector3(x + 128, y - 26, z - 1), Vector3(x + 128, y - 4, z - 1), Vector3(x + 112, y, z - 1), shade)
-	# The gondola, with its boiler's steam and two propellers spinning.
+	# Fins at the tail.
+	_quad(Vector3(x + 100 * back, y + 10 * up, z - 1), Vector3(x + 128 * back, y + 26 * up, z - 1),
+		Vector3(x + 128 * back, y + 4 * up, z - 1), Vector3(x + 112 * back, y, z - 1), shade)
+	_quad(Vector3(x + 100 * back, y - 10 * up, z - 1), Vector3(x + 128 * back, y - 26 * up, z - 1),
+		Vector3(x + 128 * back, y - 4 * up, z - 1), Vector3(x + 112 * back, y, z - 1), shade)
+	# Struts down to the gondola and the engine car behind it.
 	var iron := _dim(Color(0.30, 0.20, 0.13), light)
-	_quad(Vector3(x - 30, y - 34, z - 2), Vector3(x + 20, y - 34, z - 2), Vector3(x + 20, y - 44, z - 2), Vector3(x - 30, y - 44, z - 2), iron)
-	for prop_x: float in [x - 36.0, x + 26.0]:
-		var hub := _view(Vector3(prop_x, y - 39, z - 3))
-		draw_circle(Vector2(hub.x, hub.y), maxf(9.0 * hub.z, 1.5), _dim(Color(0.85, 0.80, 0.70, 0.3), light))
-	for k in 8:
-		var age := k * 0.6 + fmod(seconds, 0.6)
-		var puff := Vector3(x + 20 + age * AIRSHIP_SPEED * 0.9, y - 36 + age * 3.0, z - 2)
-		var alpha := clampf(0.5 - age * 0.1, 0.0, 0.5)
-		if alpha > 0.0:
-			_blob(puff, 4.0 + age * 3.0, _dim(Color(0.95, 0.95, 0.96, alpha), light))
+	var dark := _dim(Color(0.14, 0.12, 0.11), light)
+	var copper := _dim(Color(0.74, 0.42, 0.25), light)
+	var brass := _dim(Color(0.80, 0.58, 0.26), light)
+	for strut: float in [-26.0, -6.0, 14.0, 34.0, 58.0]:
+		var top := _view(Vector3(x + strut * back, y - 26 * up, z - 1))
+		var foot := _view(Vector3(x + (strut + 2.0) * back, y - 35 * up, z - 2))
+		draw_line(Vector2(top.x, top.y), Vector2(foot.x, foot.y), dark, maxf(0.8 * size * top.z, 1.0), true)
+	# The gondola: a timber car with a row of windows.
+	_quad(Vector3(x - 32 * back, y - 34 * up, z - 2), Vector3(x + 20 * back, y - 34 * up, z - 2),
+		Vector3(x + 20 * back, y - 44 * up, z - 2), Vector3(x - 26 * back, y - 44 * up, z - 2), iron)
+	for w in 5:
+		var wx := -24.0 + w * 8.0
+		_quad(Vector3(x + wx * back, y - 36.5 * up, z - 3), Vector3(x + (wx + 4.5) * back, y - 36.5 * up, z - 3),
+			Vector3(x + (wx + 4.5) * back, y - 40 * up, z - 3), Vector3(x + wx * back, y - 40 * up, z - 3),
+			Color(1.0, 0.85, 0.55, 0.35 + 0.5 * (1.0 - hangar._day)))
+	# The steam engine behind it: a copper boiler banded in brass, its
+	# firebox, and a stack raked back.
+	_quad(Vector3(x + 24 * back, y - 33 * up, z - 2), Vector3(x + 58 * back, y - 33 * up, z - 2),
+		Vector3(x + 58 * back, y - 45 * up, z - 2), Vector3(x + 24 * back, y - 45 * up, z - 2), copper)
+	_blob(Vector3(x + 58 * back, y - 39 * up, z - 2), 6.0 * size, copper)
+	_blob(Vector3(x + 24 * back, y - 39 * up, z - 2), 6.0 * size, dark)
+	for band: float in [32.0, 42.0, 52.0]:
+		_quad(Vector3(x + band * back, y - 33 * up, z - 3), Vector3(x + (band + 1.4) * back, y - 33 * up, z - 3),
+			Vector3(x + (band + 1.4) * back, y - 45 * up, z - 3), Vector3(x + band * back, y - 45 * up, z - 3), brass)
+	var stack := Vector3(x + 50 * back, y - 31 * up, z - 2)
+	var stack_top := Vector3(x + 60 * back, y - 22 * up, z - 2)
+	var st := _view(stack)
+	var sp := _view(stack_top)
+	draw_line(Vector2(st.x, st.y), Vector2(sp.x, sp.y), dark, maxf(3.4 * size * st.z, 1.5), true)
+	# The propeller at the engine's tail, seen edge on as it spins: a blur
+	# the height of its sweep, and the blades flashing through it.
+	var hub := Vector3(x + 68 * back, y - 39 * up, z - 3)
+	var shaft_from := _view(Vector3(x + 60 * back, y - 39 * up, z - 3))
+	var h := _view(hub)
+	draw_line(Vector2(shaft_from.x, shaft_from.y), Vector2(h.x, h.y), dark, maxf(1.6 * size * h.z, 1.0), true)
+	var sweep := 13.0 * size * h.z
+	var blur := PackedVector2Array()
+	for k in 16:
+		var t := TAU * k / 16.0
+		blur.append(Vector2(h.x + cos(t) * maxf(sweep * 0.16, 1.0), h.y + sin(t) * sweep))
+	draw_colored_polygon(blur, _dim(Color(0.80, 0.74, 0.62, 0.35), light))
+	var blade := sweep * absf(cos(seconds * 19.0))
+	draw_line(Vector2(h.x, h.y - blade), Vector2(h.x, h.y + blade), _dim(Color(0.45, 0.33, 0.20), light), maxf(1.4 * size * h.z, 1.0), true)
+	draw_circle(Vector2(h.x, h.y), maxf(1.8 * size * h.z, 1.0), brass)
+	# The stack's exhaust, like the train's: small wisps, sooty as they
+	# leave, whitening, spreading and thinning as they are left behind.
+	var every := 0.07
+	var newest := floorf(seconds / every)
+	for k in 90:
+		var born := (newest - k) * every
+		var age := seconds - born
+		var a := _chance(newest - k)
+		var b := _chance((newest - k) * 1.7 + 9.0)
+		var beat := 0.5 + 0.5 * pow(0.5 + 0.5 * cos(TAU * born * 1.6), 2.0)
+		var alpha := 0.36 * beat * exp(-age * 0.55) * minf(1.0, age * 6.0 + 0.3) * (0.6 + 0.4 * b)
+		if alpha < 0.012:
+			continue
+		var trail := age * speed * 0.9 + (a - 0.5) * (1.0 + age * 3.0) * size
+		var rise := (4.0 * (1.0 - exp(-age * 1.4)) + age * (0.8 + 1.4 * a)) * size
+		var at := _view(stack_top + Vector3(-facing * trail, rise, 0))
+		var white := clampf(age * 1.1, 0.0, 1.0)
+		var tone := lerpf(0.40, 0.94, white) * light + 0.04
+		draw_circle(Vector2(at.x, at.y), maxf((1.0 + 2.6 * pow(age, 0.75) * (0.6 + 0.8 * a)) * size * at.z, 0.5),
+			Color(tone, tone, tone + 0.01, alpha))
