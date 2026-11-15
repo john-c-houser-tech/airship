@@ -43,9 +43,7 @@ func _draw_shadow() -> void:
 func _draw_boiler() -> void:
 	cylinder(Vector2(73, GROUND), Vector2(73, 430), 43.0, BRASS)
 	for y: float in [470.0, 540.0, 610.0]:
-		line(Vector2(32, y), Vector2(114, y), lit(BRASS_DARK.darkened(0.3)), 3.0)
-		for x in range(38, 112, 12):
-			circle(Vector2(x, y - 4), 1.8, lit(BRASS_DARK.darkened(0.4)))
+		band(73, y, 43.0, lit(BRASS_DARK.darkened(0.3)), lit(BRASS_DARK.darkened(0.4)))
 	rect(Rect2(46, 590, 54, 30), lit(IRON))
 	circle(GAUGE, 17, lit(Color(0.98, 0.95, 0.86), _toward))
 	arc(GAUGE, 17, 0, TAU, lit(BRASS_DARK), 3.0)
