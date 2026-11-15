@@ -4,7 +4,10 @@ extends RefCounted
 ## the garden fills up over days. The newest plant comes first. The file
 ## also keeps how many parts of each kind have been fitted to the airship
 ## (core/parts.gd says what the kinds are), and on a rusted plant whether
-## its rust was scraped off: what the plants' order can't tell.
+## its rust was scraped off: what the plants' order can't tell. And it
+## keeps the valley: each airship launched moves the game on to the next,
+## where a new garden and a new airship begin; every plant remembers the
+## valley it was built in, and the parts fitted are the present valley's.
 ##
 ## Grove's garden.rs is the spec. What Godot can't do the same way:
 ## - No file locks: a lock folder beside the file stands in (making a folder
@@ -74,11 +77,14 @@ class Plant:
 	## For a plant left to rust: how many plants had been built to the end
 	## when its rust was scraped off, or -1 while it is still seized.
 	var scraped := -1
+	## The valley it was built in: how many airships had been launched.
+	var valley := 0
 
 	func equals(other: Plant) -> bool:
 		return blueprint == other.blueprint and plant_seed == other.plant_seed and outcome == other.outcome \
 			and season == other.season and weather == other.weather and progress == other.progress \
-			and when == other.when and minutes == other.minutes and scraped == other.scraped
+			and when == other.when and minutes == other.minutes and scraped == other.scraped \
+			and valley == other.valley
 
 
 var lock_wait_ms := LOCK_WAIT_MS
@@ -95,6 +101,9 @@ var _unsaved: Array[Plant] = []
 # Fitted parts only ever grow, so two windows' counts merge by the larger.
 var _fitted: Array[int] = []
 var _file_fitted: Array[int] = []
+# The valley the game has reached (airships launched), and the file's.
+var _valley := 0
+var _file_valley := 0
 # Plants scraped clean here that the file may not know of yet: marked again
 # on whatever is read from it, until a save goes through.
 var _scrapes: Array[Plant] = []
@@ -118,6 +127,7 @@ func _init(path: String) -> void:
 	if found is Array:
 		_plants = found as Array[Plant]
 		_fitted = _file_fitted.duplicate()
+		_valley = _file_valley
 	elif found == Problem.CANNOT_OPEN or found == Problem.CANNOT_READ:
 		_read_only = true
 		_problem = found as Problem
@@ -153,6 +163,25 @@ func focused_minutes() -> int:
 		if p.outcome == Outcome.BUILT:
 			total += p.minutes
 	return total
+
+
+## The valley the game has reached: how many airships have been launched.
+func valley() -> int:
+	return _valley
+
+
+## The present valley's plants, newest first: the garden that shows and
+## works. Plants of valleys left behind stay in plants(), as history.
+func valley_plants() -> Array[Plant]:
+	return _plants.filter(func(plant: Plant) -> bool: return plant.valley == _valley)
+
+
+## Launches the airship: on to the next valley, with nothing fitted to the
+## new airship there. Saved as fit() saves.
+func launch() -> void:
+	_valley = mini(_valley + 1, 2147483647)
+	_fitted = []
+	_keep()
 
 
 ## The parts fitted to the airship so far, by kind (as long as the longest
@@ -224,7 +253,7 @@ func _keep() -> void:
 		plants.push_front(_unsaved[k])
 	_scrape_again(plants)
 	_plants = plants
-	_fitted = _most(_fitted, _file_fitted)
+	_follow_file()
 	save_error = _save()
 	_let_go_of_lock()
 	if save_error.is_empty():
@@ -251,6 +280,22 @@ func _scrape_again(plants: Array[Plant]) -> void:
 				break
 
 
+## Brings what was just read from the file together with what is known
+## here: the farther valley wins, with its fitted parts; in the same
+## valley, the larger count of each part (they only ever grow).
+func _follow_file() -> void:
+	if _file_valley > _valley:
+		# Plants built here in what was the present valley, not saved yet,
+		# come along: a session completed is never left behind as history.
+		for plant: Plant in _unsaved:
+			if plant.valley == _valley:
+				plant.valley = _file_valley
+		_valley = _file_valley
+		_fitted = _file_fitted.duplicate()
+	elif _file_valley == _valley:
+		_fitted = _most(_fitted, _file_fitted)
+
+
 ## The larger of two counts, kind by kind.
 static func _most(a: Array[int], b: Array[int]) -> Array[int]:
 	var out: Array[int] = []
@@ -271,7 +316,7 @@ func problem() -> Problem:
 func record(plant: Plant) -> Change:
 	# A plant the file couldn't read back would make the whole garden
 	# unreadable, so one with values out of range is shown, never saved.
-	if _plant_from(_plant_to(plant)) == null:
+	if _plant_from(_plant_to(plant)) == null or plant.valley < 0:
 		save_error = OUT_OF_RANGE
 		return _keep_unsaved(plant, Problem.CANNOT_SAVE)
 	if _read_only:
@@ -305,9 +350,10 @@ func record(plant: Plant) -> Change:
 		# two Airships starting a garden at once don't lose one's plant.
 		found = [] as Array[Plant]
 	var plants := found as Array[Plant]
-	# What another Airship fitted since is kept too.
-	_fitted = _most(_fitted, _file_fitted)
 	_unsaved.push_front(plant)
+	# What another Airship fitted since is kept too; and if one launched
+	# the airship meanwhile, this plant belongs to the new valley.
+	_follow_file()
 	for k in range(_unsaved.size() - 1, -1, -1):
 		plants.push_front(_unsaved[k])
 	_scrape_again(plants)
@@ -335,6 +381,7 @@ func _keep_unsaved(plant: Plant, why: Problem) -> Change:
 ## is no file, or the problem reading it.
 func _read() -> Variant:
 	_file_fitted = []
+	_file_valley = 0
 	if not FileAccess.file_exists(_path):
 		# A link to a garden that isn't there (a synced folder that hasn't
 		# arrived yet) isn't an empty garden: don't start a new one there.
@@ -355,7 +402,8 @@ func _read() -> Variant:
 		return Problem.CANNOT_READ
 	# A garden from a newer Airship may hold what this one doesn't know of;
 	# saving over it would drop that.
-	if _whole((json.data as Dictionary).get("version", 1)) != 1:
+	var version := _whole((json.data as Dictionary).get("version", 1))
+	if version != 1 and version != 2:
 		return Problem.CANNOT_READ
 	# Parts fitted to the airship: absent in a garden from before there were
 	# parts, else whole numbers, none below zero.
@@ -367,6 +415,12 @@ func _read() -> Variant:
 		if _whole(count) < 0:
 			return Problem.CANNOT_READ
 		fitted_read.append(_whole(count))
+	# The valley reached: absent before any launch.
+	var valley_read := 0
+	if (json.data as Dictionary).has("valley"):
+		valley_read = _whole((json.data as Dictionary).get("valley"))
+		if valley_read < 0:
+			return Problem.CANNOT_READ
 	# On disk the oldest plant comes first; the garden wants newest first.
 	var plants: Array[Plant] = []
 	for entry: Variant in list as Array:
@@ -375,6 +429,7 @@ func _read() -> Variant:
 			return Problem.CANNOT_READ
 		plants.push_front(plant)
 	_file_fitted = fitted_read
+	_file_valley = valley_read
 	return plants
 
 
@@ -385,13 +440,18 @@ func _save() -> String:
 	for k in range(_plants.size() - 1, -1, -1):
 		# Oldest first on disk, so a new plant is a simple append in the file.
 		entries.append(_plant_to(_plants[k]))
-	# Still version 1: an Airship from before parts reads this file, and
-	# saving there only drops the fitted counts (the parts are picked and
-	# fitted again); a version 2 would stop it saving its sessions at all.
-	var whole := {"version": 1, "plants": entries}
+	# Version 1 until an airship is launched: an Airship from before parts
+	# reads that file, and saving there only drops the fitted counts and the
+	# scrapes (done again). From the first launch it is version 2, which
+	# such an Airship leaves alone: saving there would drop the valleys,
+	# and which plant belongs to which can't be worked out again.
+	var valleys := _valley > 0 or _plants.any(func(plant: Plant) -> bool: return plant.valley > 0)
+	var whole := {"version": 2 if valleys else 1, "plants": entries}
 	# Only once something is fitted, so a garden without parts reads as before.
 	if _fitted.any(func(count: int) -> bool: return count > 0):
 		whole["fitted"] = _fitted
+	if _valley > 0:
+		whole["valley"] = _valley
 	var text := JSON.stringify(whole, "  ", false) + "\n"
 	# The file itself, if the garden is a link to one kept elsewhere
 	# (dotfiles, a synced folder): the link stays, and what it points at is
@@ -521,6 +581,11 @@ static func _plant_from(entry: Variant) -> Plant:
 	plant.outcome = outcome as Outcome
 	plant.progress = float(progress)
 	plant.when = when
+	# The valley it was built in: absent in the first.
+	if e.has("valley"):
+		plant.valley = _whole(e.get("valley"))
+		if plant.valley < 0:
+			return null
 	# Only a rusted plant is ever scraped; the mark is absent until it is.
 	if e.has("scraped"):
 		plant.scraped = _whole(e.get("scraped"))
@@ -545,6 +610,8 @@ static func _plant_to(plant: Plant) -> Dictionary:
 	}
 	if plant.scraped >= 0:
 		entry["scraped"] = plant.scraped
+	if plant.valley > 0:
+		entry["valley"] = plant.valley
 	return entry
 
 

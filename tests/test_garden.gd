@@ -255,7 +255,7 @@ func test_a_plant_with_values_out_of_range_is_shown_never_saved() -> void:
 
 func test_a_garden_from_a_newer_airship_is_left_untouched() -> void:
 	var path := _folder("newer").path_join("garden.json")
-	var text := JSON.stringify({"version": 2, "plants": [Garden._plant_to(_plant(1))], "trains": []})
+	var text := JSON.stringify({"version": 3, "plants": [Garden._plant_to(_plant(1))], "trains": []})
 	_write(path, text)
 	var garden := Garden.new(path)
 	same(garden.problem(), Garden.Problem.CANNOT_READ, "problem")
@@ -455,3 +455,97 @@ func test_scraping_in_a_garden_kept_nowhere_still_shows() -> void:
 	same(garden.problem(), Garden.Problem.NO_FOLDER, "and it says it isn't kept")
 	garden.scrape(garden.plants()[1], -1)
 	same(garden.plants()[1].scraped, 1, "a scrape from before any session is no scrape")
+
+
+func test_a_launch_moves_the_garden_to_the_next_valley() -> void:
+	var path := _folder("valley").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1))
+	garden.fit([0, 0, 3] as Array[int])
+	check(not _text(path).contains("valley"), "nothing about valleys before a launch")
+	same(garden.valley(), 0, "the first valley")
+	garden.launch()
+	same(garden.problem(), Garden.Problem.NONE, "saved")
+	same(garden.valley(), 1, "the next valley")
+	same(garden.fitted(), [] as Array[int], "nothing fitted to the new airship")
+	same(_seeds(garden), [1] as Array[int], "the old valley's plant is kept")
+	same(garden.valley_plants().size(), 0, "but it isn't in the new garden")
+	var next := _plant(2)
+	next.valley = 1
+	garden.record(next)
+	var again := Garden.new(path)
+	same(again.valley(), 1, "read back")
+	same(again.fitted(), [] as Array[int], "still nothing fitted")
+	same(_seeds(again), [2, 1] as Array[int], "every plant is there")
+	same(again.valley_plants().size(), 1, "one in the new valley")
+	same(again.valley_plants()[0].plant_seed, 2, "the new one")
+	same(again.plants()[1].valley, 0, "the old one remembers its valley")
+
+
+func test_two_windows_launching_the_same_airship_launch_it_once() -> void:
+	var path := _folder("valley-two").path_join("garden.json")
+	var one := Garden.new(path)
+	one.record(_plant(1))
+	one.fit([2] as Array[int])
+	var two := Garden.new(path)
+	one.launch()
+	two.launch()
+	same(Garden.new(path).valley(), 1, "one airship, one launch")
+	same(two.valley(), 1, "the second window agrees")
+
+
+func test_a_window_left_behind_follows_to_the_new_valley() -> void:
+	var path := _folder("valley-behind").path_join("garden.json")
+	var one := Garden.new(path)
+	one.record(_plant(1))
+	one.fit([2] as Array[int])
+	var behind := Garden.new(path)
+	one.launch()
+	one.fit([1] as Array[int])
+	behind.fit([5] as Array[int])
+	same(behind.valley(), 1, "it has caught up")
+	same(behind.fitted(), [1] as Array[int], "the old valley's parts are not carried over")
+	same(Garden.new(path).fitted(), [1] as Array[int], "nor saved")
+
+
+func test_a_bad_valley_is_not_a_garden() -> void:
+	for bad: Variant in [-1, 1.5, "two", null]:
+		var path := _folder("valley-bad").path_join("garden.json")
+		_write(path, JSON.stringify({"version": 1, "plants": [Garden._plant_to(_plant(1))], "valley": bad}))
+		same(Garden.new(path).problem(), Garden.Problem.CANNOT_READ, "not a garden: valley %s" % str(bad))
+		var entry := Garden._plant_to(_plant(1))
+		entry["valley"] = bad
+		check(Garden._plant_from(entry) == null, "not a plant: valley %s" % str(bad))
+
+
+func test_a_window_left_behind_records_its_plant_in_the_new_valley() -> void:
+	var path := _folder("valley-record").path_join("garden.json")
+	var one := Garden.new(path)
+	one.record(_plant(1))
+	var behind := Garden.new(path)
+	one.launch()
+	# The window left behind tags its plant with the valley it knows.
+	behind.record(_plant(2))
+	same(behind.valley(), 1, "it has caught up")
+	same(behind.valley_plants().size(), 1, "and its session counts in the new valley")
+	var again := Garden.new(path)
+	same(again.valley_plants().size(), 1, "saved there")
+	same(again.valley_plants()[0].plant_seed, 2, "the plant it built")
+	same(again.plants()[1].valley, 0, "the old valley's plant stays where it was")
+
+
+func test_the_file_is_version_2_from_the_first_launch() -> void:
+	var path := _folder("valley-version").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1))
+	garden.fit([1] as Array[int])
+	same((JSON.parse_string(_text(path)) as Dictionary)["version"], 1.0, "version 1 before any launch")
+	garden.launch()
+	var data: Dictionary = JSON.parse_string(_text(path))
+	same(data["version"], 2.0, "version 2 after: an older Airship must leave the valleys alone")
+	same(data["valley"], 1.0, "the valley")
+	same(Garden.new(path).problem(), Garden.Problem.NONE, "and this Airship reads it")
+	var negative := _plant(3)
+	negative.valley = -1
+	garden.record(negative)
+	same(garden.problem(), Garden.Problem.CANNOT_SAVE, "a plant from no valley is shown, never saved")

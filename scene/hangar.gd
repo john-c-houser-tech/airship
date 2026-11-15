@@ -64,7 +64,7 @@ var moving_weather := false
 ## frame, the ship, the garden and the weather. ALL paints both, in order.
 ## While the arm works, rain and snow move instead (scene/falling.gd, also
 ## between the pictures), and the inside paints them only when still.
-enum Painting { ALL, OUTSIDE, INSIDE }
+enum Painting { ALL, OUTSIDE, INSIDE, SHIP }
 var painting := Painting.ALL
 ## The railway across the valley: this far beyond the door.
 const RAILWAY_Z := DOOR_Z + 350.0
@@ -77,10 +77,23 @@ var _sun := 1.0
 var _day := 1.0
 # How much the moon lights things, 0 to a quarter.
 var _moon := 0.0
-## Shows the finished ship outside, climbing towards the pass.
-## The finished airship out over the valley (milestone 7 sets this; the
-## pose, the blurred propellers and the smoke trail are ready for it).
-var launched := false
+## The SHIP painting is the finished airship alone, in flight: propellers
+## spinning, funnel and engines trailing smoke and steam. `launch_seconds`
+## is how far into its launch it is (below zero: nothing is drawn): out of
+## its cradle and through the door, then round toward the road and up over
+## the pass. The window draws it every frame of the flight, over the inside
+## picture while it is in the hangar and under it once it is out.
+var launch_seconds := -1.0
+## The ship is too big to draw as one thing while it passes the door: the
+## window draws it twice, the part still in the hangar over the inside
+## picture and the part beyond the door under it, where the door's frame
+## hides what it should. This says which part this painting is.
+var beyond_door := false
+## How long the launch takes, and how long the ship takes to clear the door.
+const LAUNCH_SECONDS := 36.0
+const LAUNCH_OUT_SECONDS := 10.0
+# How far out of the hangar's light the flying ship is, 0 to 1.
+var _afield := 0.0
 
 var _cam := Vector3(-95, 20, 300)
 var _yaw := deg_to_rad(19.0)
@@ -299,21 +312,32 @@ func _shade(base: Color, f: float) -> Color:
 func _draw() -> void:
 	if daylight == null:
 		return
-	if launched:
-		_ship_basis = Basis(Vector3.UP, deg_to_rad(64.0)) * Basis(Vector3.RIGHT, deg_to_rad(-7.0))
-		_ship_origin = Vector3(150, 330, DOOR_Z + 1500)
-	else:
-		_ship_basis = Basis.IDENTITY
-		_ship_origin = SHIP_ORIGIN
+	_ship_basis = Basis.IDENTITY
+	_ship_origin = SHIP_ORIGIN
+	_afield = 0.0
+	if painting == Painting.SHIP:
+		if launch_seconds < 0.0:
+			return
+		if not beyond_door and launch_seconds > LAUNCH_OUT_SECONDS:
+			# Nothing is left in the hangar.
+			return
+		_fly(launch_seconds)
+		var nose := _ship_origin.z + SHIP_L * SHIP_SCALE * 0.5
+		if beyond_door and launch_seconds < LAUNCH_OUT_SECONDS and nose + 60.0 < DOOR_Z:
+			# Nothing has reached the door yet.
+			return
+		var flying := _ship_items(1.0)
+		flying.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
+		# The door's plane as the eye measures depth, on the ship's line.
+		var door := _depth(Vector3(_ship_origin.x, _ship_origin.y, DOOR_Z))
+		for item: Item in flying:
+			if (item.depth > door) == beyond_door:
+				item.draw.call()
+		return
 	if painting != Painting.INSIDE:
 		_draw_sky()
 		_draw_land()
 		_draw_clouds()
-		if launched:
-			var outside := _ship_items(1.0)
-			outside.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
-			for item: Item in outside:
-				item.draw.call()
 	if painting == Painting.OUTSIDE:
 		return
 	# The garden and the weather are nearer than the railway, so a passing
@@ -326,13 +350,51 @@ func _draw() -> void:
 	var items: Array[Item] = []
 	items.append_array(_rib_items())
 	items.append_array(_cradle_items())
-	if not launched:
-		items.append_array(_ship_items(built))
+	items.append_array(_ship_items(built))
 	items.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
 	for item: Item in items:
 		item.draw.call()
-	# The low sun's gold over everything.
-	draw_rect(Rect2(0, 0, SIZE, SIZE), daylight.warm_tint())
+	# The low sun's gold over everything. The window lays it over the inside
+	# picture itself, so that it lies over the launched airship too.
+	if painting == Painting.ALL:
+		draw_rect(Rect2(0, 0, SIZE, SIZE), daylight.warm_tint())
+
+
+## Where the launched airship is `seconds` into its flight. It gathers way
+## down the hangar and out through the door, tail and all, then holds that
+## speed: round onto the line of the road, nose up, and over the pass.
+func _fly(seconds: float) -> void:
+	var out := Vector3(SHIP_ORIGIN.x * 0.3, SHIP_ORIGIN.y, DOOR_Z + SHIP_L * SHIP_SCALE * 0.5 + 40.0)
+	var run := out.z - SHIP_ORIGIN.z
+	var speed := 2.0 * run / LAUNCH_OUT_SECONDS
+	if seconds <= LAUNCH_OUT_SECONDS:
+		var k := seconds / LAUNCH_OUT_SECONDS
+		_ship_origin = SHIP_ORIGIN.lerp(out, k * k)
+		_afield = smoothstep(0.55, 1.0, k * k)
+		return
+	_afield = 1.0
+	var crest_z := DOOR_Z + HILLS_CREST
+	var over := Vector3(_road_x(crest_z) + 60.0, _ground_at(_road_x(crest_z), crest_z) + 520.0, crest_z + 900.0)
+	var far := clampf((seconds - LAUNCH_OUT_SECONDS) * speed / out.distance_to(over), 0.0, 1.0)
+	# The turn and the climb come on gently and ease off.
+	var bend := smoothstep(0.0, 0.45, far)
+	var straight := out + Vector3(0, 0, 1) * (far * out.distance_to(over))
+	_ship_origin = straight.lerp(out.lerp(over, far), bend)
+	var heading := atan2(over.x - out.x, over.z - out.z)
+	var climb := atan2(over.y - out.y, Vector2(over.x - out.x, over.z - out.z).length())
+	_ship_basis = Basis(Vector3.UP, heading * bend) * Basis(Vector3.RIGHT, -climb * 1.3 * sin(PI * minf(far * 1.2, 1.0)))
+
+
+## Shows the launched airship `seconds` into its flight, in this light, or
+## puts it away (below zero).
+func show_launch(daylight_: Daylight, conditions_: Weather.Conditions, seconds: float) -> void:
+	daylight = daylight_
+	conditions = conditions_
+	launch_seconds = seconds if seconds <= LAUNCH_SECONDS else -1.0
+	_follow_light()
+	# Thinning into the distance at the last.
+	modulate.a = 1.0 - smoothstep(0.84, 0.98, seconds / LAUNCH_SECONDS)
+	queue_redraw()
 
 
 ## The door's opening on screen (760 across), corner by corner: what is seen
@@ -1020,7 +1082,7 @@ func _metal(base: Color, world_p: Vector3, world_n: Vector3) -> Color:
 	var view := (_cam - world_p).normalized()
 	var half := (view + _light).normalized()
 	var spec := pow(maxf(world_n.dot(half), 0.0), 18.0) * (_sun + _moon)
-	var ambient := (0.62 if not launched else 0.85) * (0.35 + 0.65 * _day)
+	var ambient := lerpf(0.62, 0.85, _afield) * (0.35 + 0.65 * _day)
 	var sky := maxf(world_n.y, 0.0) * 0.15 * _day
 	var f := ambient + sky + diffuse * 0.75
 	return Color(base.r * f + spec * 0.9, base.g * f + spec * 0.8, base.b * f + spec * 0.55)
@@ -1125,7 +1187,7 @@ func _ship_items(amount: float) -> Array[Item]:
 		items.append_array(_gondola_items(engines))
 	for k in fins:
 		items.append(_fin_item(k))
-	if launched:
+	if painting == Painting.SHIP:
 		items.append_array(_exhaust_items(engines))
 	return items
 
@@ -1200,7 +1262,7 @@ func _cloth_shade(p: Vector3, n: Vector3) -> Color:
 	var diffuse := maxf(n.dot(_light), 0.0) * (_sun + _moon)
 	var view := (_cam - p).normalized()
 	var sheen := pow(maxf(n.dot((view + _light).normalized()), 0.0), 6.0) * 0.12 * (_sun + _moon)
-	var ambient := (0.62 if not launched else 0.8) * (0.35 + 0.65 * _day)
+	var ambient := lerpf(0.62, 0.8, _afield) * (0.35 + 0.65 * _day)
 	var f := ambient + maxf(n.y, 0.0) * 0.12 + diffuse * 0.6
 	return Color(CANVAS.r * f + sheen, CANVAS.g * f + sheen, CANVAS.b * f + sheen * 0.8)
 
@@ -1230,7 +1292,8 @@ func _cloth_item(i: int, j: int) -> Item:
 		cb = inside
 	var ridge := _shade(ca, 0.82)
 	var seam := _shade(ca, 0.9)
-	var near := facing and not launched
+	# The cloth's seams show while the ship is near.
+	var near := facing and _afield < 0.5
 	return Item.new(_depth(centre), func() -> void:
 		_poly([w[0], w[1], w[3], w[2]], [ca, ca, cm, cm])
 		_poly([w[2], w[3], w[5], w[4]], [cm, cm, cb, cb])
@@ -1392,7 +1455,7 @@ func _engine_items(k: int) -> Array[Item]:
 	for t in 20:
 		var ang := TAU * t / 20.0
 		rim.append(_world(front + Vector3(cos(ang) * 9.0, sin(ang) * 9.0, 0)))
-	var spinning := launched
+	var spinning := painting == Painting.SHIP
 	items.append(Item.new(_depth(hub) - 1.0, func() -> void:
 		var c := _to_cam(hub)
 		if c.z <= NEAR:
@@ -1413,21 +1476,33 @@ func _exhaust_items(engines: int) -> Array[Item]:
 	for k in engines:
 		sources.append([_engine_hub(k) + Vector3(0, 2.0, -7), Color(1, 1, 1), 1.6])
 	var aft := _ship_basis * Vector3(0, 0, -1)
+	# The smoke and steam stream back and up, each wisp its own size and a
+	# little off the line, moving on with the flight's seconds.
+	var flow := maxf(launch_seconds, 0.0) * 2.2
+	var first := floorf(flow)
 	for src: Array in sources:
 		var origin := _world(src[0] as Vector3)
 		var colour := src[1] as Color
 		var size := float(src[2])
-		for k in 12:
-			var p := origin + aft * (k * 16.0 + k * k * 0.8) + Vector3(0, k * 3.0 + k * k * 0.9, 0)
-			var r := (size + k * 1.6) * SHIP_SCALE
-			var alpha := clampf(0.75 - k * 0.06, 0.0, 1.0)
+		for k in 22:
+			if first - k < 0.0:
+				# Not yet puffed: the flight has only just begun.
+				continue
+			var age := k + flow - first
+			var a := fposmod(sin((first - k) * 12.9898 + size) * 43758.5453, 1.0)
+			var b := fposmod(sin((first - k) * 78.233 + size) * 12543.853, 1.0)
+			var p := origin + aft * (age * 9.0 + age * age * 0.45) + Vector3((a - 0.5) * age * 2.2, age * 1.6 + age * age * (0.25 + 0.3 * b), 0)
+			var r := (size * 0.7 + age * (0.5 + 0.9 * a)) * SHIP_SCALE
+			var alpha := clampf(0.8 - age * 0.036, 0.0, 1.0) * minf(1.0, age * 1.5) * (0.55 + 0.45 * b)
+			# Smoke pales as it thins; steam is white from the start.
+			var tone := colour.lerp(Color(0.8, 0.8, 0.82), clampf(age * 0.05, 0.0, 0.8))
 			items.append(Item.new(_depth(p), func() -> void:
 				var c := _to_cam(p)
 				if c.z > NEAR:
 					var at := _project(c)
 					var px := _focal * r / c.z
-					_glow(at, px * 1.3, Color(colour, alpha * 0.6))
-					_disc(at, px * 0.75, Color(colour, alpha * 0.5))))
+					_glow(at, px * 1.3, Color(tone, alpha * 0.5))
+					_disc(at, px * 0.7, Color(tone, alpha * 0.45))))
 	return items
 
 

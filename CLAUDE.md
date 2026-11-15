@@ -42,8 +42,16 @@ archived), whose rules and tests are the spec for Airship's rules.
   each making its part once per later completed session, and the parts an
   airship needs; parts made are worked out from the garden's plants, and
   the garden file keeps only the parts fitted and which rusted plants
-  were scraped clean. The break after a session is `App.break_step()`:
-  plant, scrape, collect, fit, one click or Enter each.
+  were scraped clean, and the valley (airships launched; each plant
+  remembers its own). The break after a session is `App.break_step()`:
+  plant, scrape, collect and fit, one click or Enter each; once every part
+  is fitted the launch is offered, and only the key L sets it off (it
+  can't be undone).
+  A launch starts a new valley: a fresh garden and airship, the old
+  plants kept as history. The flight is the hangar's own ship, painted
+  alone (`Hangar.Painting.SHIP`) every frame while it lasts (30 a second),
+  by two layers split at the door: the part still inside over the hangar's
+  picture, the part beyond the door under it.
   Blueprints unlock as the airship grows; Left and Right choose the next
   plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.

@@ -33,6 +33,8 @@ enum Event {
 	MUTED,
 	## A step of the break was taken: `break_step()` says what comes next.
 	BREAK,
+	## The airship was launched: on to the next valley.
+	LAUNCHED,
 	## Another plant was chosen to build next: `blueprint()` says which.
 	## (A plant built to the end changes it too, with GARDEN.)
 	BLUEPRINT,
@@ -82,6 +84,8 @@ enum BreakStep {
 	COLLECT,
 	## Fit the picked parts to the airship.
 	FIT,
+	## Launch the finished airship over the pass.
+	LAUNCH,
 }
 ## Local time as YYYY-MM-DDTHH:MM:SS: when a plant was finished, and, unless
 ## AIRSHIP_DATE or AIRSHIP_TIME pin them, the season and the light. Tests
@@ -167,9 +171,9 @@ func break_step() -> BreakStep:
 		return BreakStep.NONE
 	if _to_plant:
 		return BreakStep.PLANT
-	if Parts.to_scrape(garden.plants()) >= 0:
+	if Parts.to_scrape(garden.valley_plants()) >= 0:
 		return BreakStep.SCRAPE
-	var ready := Parts.waiting(Parts.made(garden.plants()), garden.fitted())
+	var ready := Parts.waiting(Parts.made(garden.valley_plants()), garden.fitted())
 	var picked := Parts.waiting(_picked(), garden.fitted())
 	for kind in Parts.KINDS:
 		if ready[kind] > picked[kind]:
@@ -177,6 +181,8 @@ func break_step() -> BreakStep:
 	for kind in Parts.KINDS:
 		if picked[kind] > 0:
 			return BreakStep.FIT
+	if airship_progress() >= 1.0:
+		return BreakStep.LAUNCH
 	return BreakStep.NONE
 
 
@@ -189,7 +195,7 @@ func take_break_step() -> Array[int]:
 			return [Event.BREAK, Event.GARDEN]
 		BreakStep.SCRAPE:
 			var before := garden.problem()
-			var plants := garden.plants()
+			var plants := garden.valley_plants()
 			garden.scrape(plants[Parts.to_scrape(plants)], Parts.sessions(plants))
 			garden_change = Garden.Change.RESET
 			var scraped: Array[int] = [Event.BREAK, Event.GARDEN]
@@ -197,7 +203,7 @@ func take_break_step() -> Array[int]:
 				scraped.append(Event.GARDEN_PROBLEM)
 			return scraped
 		BreakStep.COLLECT:
-			_collected = Parts.made(garden.plants())
+			_collected = Parts.made(garden.valley_plants())
 			return [Event.BREAK]
 		BreakStep.FIT:
 			var problem_before := garden.problem()
@@ -213,6 +219,17 @@ func take_break_step() -> Array[int]:
 			if garden.problem() != problem_before:
 				events.append(Event.GARDEN_PROBLEM)
 			return events
+		BreakStep.LAUNCH:
+			var before := garden.problem()
+			garden.launch()
+			garden_change = Garden.Change.RESET
+			# A new valley, a new garden: nothing picked, nothing chosen.
+			_collected = []
+			_chosen = -1
+			var launched: Array[int] = [Event.BREAK, Event.GARDEN, Event.LAUNCHED]
+			if garden.problem() != before:
+				launched.append(Event.GARDEN_PROBLEM)
+			return launched
 	return []
 
 
@@ -230,7 +247,7 @@ func on_planter() -> bool:
 # The parts picked so far, by kind, a count for every kind: never more
 # than the garden has made, should its plants have changed since.
 func _picked() -> Array[int]:
-	var made := Parts.made(garden.plants())
+	var made := Parts.made(garden.valley_plants())
 	var picked: Array[int] = []
 	for kind in Parts.KINDS:
 		picked.append(mini(_collected[kind], made[kind]) if kind < _collected.size() else 0)
@@ -240,7 +257,7 @@ func _picked() -> Array[int]:
 ## The blueprint to build next when nobody chooses: the plant whose parts
 ## the airship is shortest of.
 func next_blueprint() -> int:
-	return Parts.most_needed(garden.plants(), Parts.unlocked(airship_progress()))
+	return Parts.most_needed(garden.valley_plants(), Parts.unlocked(airship_progress()))
 
 
 ## The blueprint the next session builds: the one chosen, or the one most
@@ -329,6 +346,7 @@ func _record() -> Array[int]:
 	var plant := Garden.Plant.new()
 	var built := session.state() == Session.State.BUILT
 	plant.blueprint = session.blueprint()
+	plant.valley = garden.valley()
 	plant.plant_seed = session.plant_seed()
 	plant.outcome = Garden.Outcome.BUILT if built else Garden.Outcome.RUSTED
 	plant.progress = 1.0 if built else session.progress()
