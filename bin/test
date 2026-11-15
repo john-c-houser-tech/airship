@@ -101,6 +101,6 @@ fi
 # The frame: midsummer noon in clear weather, ten minutes into a session, so
 # the check knows the sky's colour and the arm is at work.
 run frame env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
-    xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
     -- --build=600 --check --shot="$PWD/$out/frame.png"
 echo "bin/test: passed; the frame is $out/frame.png"

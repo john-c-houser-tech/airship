@@ -203,3 +203,28 @@ func test_a_rusted_plant_tells_the_desktop_nothing() -> void:
 	var app := _app(10, "rusted-quiet")
 	app.start(1, 7)
 	check(not App.Event.PLANT_BUILT in app.give_up(), "no notice for giving up")
+
+
+func test_each_built_plant_builds_a_fortieth_of_the_airship() -> void:
+	var app := _app(25 * 60, "airship")
+	same(app.airship_progress(), 0.0, "an empty garden")
+	app.start(1, 1)
+	app.advance(25 * 60 * 1000)
+	same(app.airship_progress(), 1.0 / 40.0, "one built plant")
+	app.start(1, 2)
+	app.advance(60_000)
+	app.give_up()
+	same(app.airship_progress(), 1.0 / 40.0, "a rusted plant adds nothing")
+	# One built already, by the session above: 39 more make forty.
+	for k in 39:
+		var plant := Garden.Plant.new()
+		plant.when = "2026-11-14T10:00:00"
+		plant.progress = 1.0
+		app.garden.record(plant)
+	same(app.airship_progress(), 1.0, "exactly forty built plants make a whole airship")
+	for k in 6:
+		var plant := Garden.Plant.new()
+		plant.when = "2026-11-14T10:00:00"
+		plant.progress = 1.0
+		app.garden.record(plant)
+	same(app.airship_progress(), 1.0, "never past a whole airship")

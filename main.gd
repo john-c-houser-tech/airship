@@ -12,17 +12,22 @@ extends Node2D
 ## quits; --check also checks the frame (bin/test's, at a pinned clear noon);
 ## --build=SECONDS starts a session that many seconds in; --give-up then gives
 ## it up; --give-up-at=SECONDS and --quit-at=SECONDS do so that long after
-## start, --log-sounds says when a sound starts and stops, and --log-words
-## says the first line shown (bin/test's headless runs). Pictures keep their
+## start, --log-sounds says when a sound starts and stops, --log-words says
+## the first line shown (bin/test's headless runs), and --log-frames counts
+## the frames actually drawn each second (to see what costs CPU). Pictures keep their
 ## plants in a throwaway garden, never the real one. AIRSHIP_DATE,
 ## AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and AIRSHIP_LANGUAGE the
 ## language.
 
-const Backdrop := preload("res://scene/backdrop.gd")
+const Hangar := preload("res://scene/hangar.gd")
 const Machinery := preload("res://scene/machinery.gd")
 const Workshop := preload("res://scene/workshop.gd")
-const WeatherLayer := preload("res://scene/weather_layer.gd")
 const Hud := preload("res://scene/hud.gd")
+# Where the workshop corner stands: its own drawing, scaled into the left
+# foreground on the hangar's boards (milestone 5b redraws it in 3D).
+const WORKSHOP_PLACE := Transform2D(0.0, Vector2(0.55, 0.55), 0.0, Vector2(-8, 352))
+# The hangar's lamplight on the workshop corner, by day.
+const WORKSHOP_TINT := Color(0.86, 0.80, 0.72)
 
 # Godot waits the longer of 1/max_fps and the low-processor sleep between
 # turns of its loop, input included: so Space answers within about a sixth
@@ -37,16 +42,24 @@ const STEAM_FADE_SECONDS := 3.5
 const LIGHT_EVERY_MS := 60_000
 const THEME_EVERY_MS := 2_000
 const SHOT_FRAMES := 4
+# Pixels the frame check reads: sky through the door, the boiler, the floor.
+const SKY_PIXEL := Vector2i(300, 275)
+const BOILER_PIXEL := Vector2i(33, 660)
+const FLOOR_PIXEL := Vector2i(640, 690)
 
 var app: App
 var theme: DesktopTheme
 var language: DesktopLanguage
 var notifier: Notifier
 
-var _backdrop: Backdrop
+var _hangar: Hangar
+# The hangar is painted into this picture only when it changes, and the
+# picture is shown every frame: replaying thousands of shapes each frame cost
+# 69% of a core on John's desktop while the arm worked.
+var _hangar_paint: SubViewport
+var _hangar_picture: Sprite2D
 var _machinery: Machinery
 var _workshop: Workshop
-var _weather: WeatherLayer
 var _hud: Hud
 var _player: AudioStreamPlayer
 var _fade: Tween
@@ -58,6 +71,10 @@ var _check := false
 var _give_up_at := -1.0
 var _quit_at := -1.0
 var _log_sounds := false
+# --log-frames: frames actually drawn, counted and printed each second.
+var _frames_drawn := 0
+var _frames_since_ms := 0.0
+var _log_frames := false
 var _alive_ms := 0.0
 var _was_playing := false
 var _frames := 0
@@ -84,6 +101,9 @@ func _ready() -> void:
 			_quit_at = arg.trim_prefix("--quit-at=").to_float()
 		elif arg == "--log-sounds":
 			_log_sounds = true
+		elif arg == "--log-frames":
+			_log_frames = true
+			RenderingServer.frame_post_draw.connect(func() -> void: _frames_drawn += 1)
 		elif arg == "--log-words":
 			log_words = true
 	if (build >= 0 or not _shot_path.is_empty()) and options.garden_path.is_empty():
@@ -97,13 +117,24 @@ func _ready() -> void:
 	language = DesktopLanguage.new(options.language_file)
 	app.set_language(language.code)
 	notifier = Notifier.new()
-	_backdrop = Backdrop.new()
+	_hangar = Hangar.new()
+	_hangar_paint = SubViewport.new()
+	_hangar_paint.transparent_bg = false
+	_hangar_paint.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_hangar_paint.add_child(_hangar)
+	add_child(_hangar_paint)
+	_hangar_picture = Sprite2D.new()
+	_hangar_picture.centered = false
+	_hangar_picture.texture = _hangar_paint.get_texture()
 	_machinery = Machinery.new()
 	_workshop = Workshop.new()
-	_weather = WeatherLayer.new()
 	_hud = Hud.new()
-	for layer: Node2D in [_backdrop, _machinery, _workshop, _weather, _hud]:
+	for layer: Node2D in [_hangar_picture, _machinery, _workshop, _hud]:
 		add_child(layer)
+	_fit_hangar_picture()
+	get_window().size_changed.connect(_fit_hangar_picture)
+	for corner: Node2D in [_machinery, _workshop]:
+		corner.transform = WORKSHOP_PLACE
 	_player = AudioStreamPlayer.new()
 	add_child(_player)
 	_workshop.time_scale = app.session.seconds() / Workshop.BuildPlan.SESSION
@@ -154,6 +185,12 @@ func _process(delta: float) -> void:
 		_workshop.show_session(Session.State.BUILDING, app.session.progress())
 	_pace()
 	_alive_ms += delta * 1000.0
+	if _log_frames:
+		_frames_since_ms += delta * 1000.0
+		if _frames_since_ms >= 1000.0:
+			print("frames drawn: %d in %.1f s" % [_frames_drawn, _frames_since_ms / 1000.0])
+			_frames_drawn = 0
+			_frames_since_ms = 0.0
 	if _give_up_at >= 0.0 and _alive_ms >= _give_up_at * 1000.0:
 		_give_up_at = -1.0
 		_heard(app.give_up())
@@ -195,7 +232,7 @@ func _heard(events: Array[int]) -> void:
 				_hud.state = app.session.state()
 				_hud.remaining = app.session.remaining()
 				_hud.queue_redraw()
-			App.Event.WEATHER, App.Event.LIGHT:
+			App.Event.WEATHER, App.Event.LIGHT, App.Event.GARDEN:
 				_show_sky()
 			App.Event.GARDEN_PROBLEM:
 				_hud.garden_problem = app.garden.problem()
@@ -228,13 +265,16 @@ func _show_everything() -> void:
 	_pace()
 
 
+## The hangar and what's seen through its door: drawn again only when the
+## light, the weather or the garden (and so the airship) changes.
 func _show_sky() -> void:
-	_backdrop.daylight = app.daylight
-	_backdrop.cloud = app.weather.now().cloud
-	_weather.daylight = app.daylight
-	_weather.conditions = app.weather.now()
-	_backdrop.queue_redraw()
-	_weather.queue_redraw()
+	if _hangar.show_world(app.daylight, app.weather.now(), app.airship_progress(), app.garden.built()):
+		_hangar_paint.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var lamplight := 0.45 + 0.55 * app.daylight.ambient
+	# The golden hour reaches the corner too.
+	var tint := Color(WORKSHOP_TINT * lamplight, 1.0).lerp(app.daylight.warm, app.daylight.warmth * 0.2)
+	for corner: Node2D in [_machinery, _workshop]:
+		corner.modulate = tint
 
 
 ## Plays a distant sound, made ahead of time by bin/make-sounds (the package
@@ -264,6 +304,20 @@ func _fade_out(seconds: float) -> void:
 	_fade.tween_callback(_player.stop)
 
 
+## Sizes the hangar's picture to the window's real pixels, so it stays sharp
+## (the scene is laid out on a 760-unit square, stretched to the window).
+func _fit_hangar_picture() -> void:
+	var window := get_window().size
+	var side := maxi(mini(window.x, window.y), 1)
+	if side == _hangar_paint.size.x:
+		return
+	_hangar_paint.size = Vector2i(side, side)
+	_hangar.scale = Vector2.ONE * (side / Hangar.SIZE)
+	_hangar_picture.scale = Vector2.ONE * (Hangar.SIZE / side)
+	_hangar.queue_redraw()
+	_hangar_paint.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
 ## Draws as often as what's on screen needs.
 func _pace() -> void:
 	var building := app.session.state() == Session.State.BUILDING
@@ -279,9 +333,9 @@ func _pace() -> void:
 
 
 ## Saves the frame and, with --check, checks it: at bin/test's clear noon
-## the sky's corner is the colour the core says, the boiler is brass and the
-## ground is green, so a scene that lost its sky, its machinery or its land
-## fails. Exit code 0 if it passes.
+## the sky through the door is the colour the core says, the boiler is brass
+## and the floor is wood, so a scene that lost its sky, its machinery or its
+## hangar fails. Exit code 0 if it passes.
 func _take_shot() -> void:
 	set_process(false)
 	var image := get_viewport().get_texture().get_image()
@@ -292,16 +346,16 @@ func _take_shot() -> void:
 	var problems: Array[String] = []
 	if not app.weather.now().equals(Weather.conditions_of(Weather.Kind.CLEAR)):
 		problems.append("the check needs clear weather (AIRSHIP_WEATHER=clear)")
-	var corner := image.get_pixel(4, 4)
-	var sky := app.daylight.top
-	if absf(corner.r - sky.r) > 0.03 or absf(corner.g - sky.g) > 0.03 or absf(corner.b - sky.b) > 0.03:
-		problems.append("the sky's corner is %s, the core's sky is %s" % [corner, sky])
-	var boiler := image.get_pixel(73, 560)
-	if not (boiler.r > 0.4 and boiler.r > boiler.g and boiler.g > boiler.b):
+	var through_door := image.get_pixel(SKY_PIXEL.x, SKY_PIXEL.y)
+	var sky := _hangar.clear_sky_at(app.daylight, SKY_PIXEL.y)
+	if absf(through_door.r - sky.r) > 0.04 or absf(through_door.g - sky.g) > 0.04 or absf(through_door.b - sky.b) > 0.04:
+		problems.append("the sky through the door is %s, the core's sky there is %s" % [through_door, sky])
+	var boiler := image.get_pixel(BOILER_PIXEL.x, BOILER_PIXEL.y)
+	if not (boiler.r > 0.35 and boiler.r > boiler.g and boiler.g > boiler.b):
 		problems.append("the boiler isn't brass: %s" % boiler)
-	var ground := image.get_pixel(700, 700)
-	if not (ground.g > ground.r and ground.g > ground.b):
-		problems.append("the ground isn't green: %s" % ground)
+	var boards := image.get_pixel(FLOOR_PIXEL.x, FLOOR_PIXEL.y)
+	if not (boards.r > boards.g and boards.g > boards.b and boards.r > 0.25):
+		problems.append("the floor isn't wood: %s" % boards)
 	for problem: String in problems:
 		printerr("frame check failed: " + problem)
 	get_tree().quit(0 if problems.is_empty() else 1)

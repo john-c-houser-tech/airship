@@ -19,9 +19,13 @@ archived), whose rules and tests are the spec for Airship's rules.
   language code. Every line shown goes through `translate()` (or the app's
   `say()`), and the tests fail if any language lacks it or keeps a string
   nothing says any more: a new line needs all six translations.
-- `scene/` draws: the backdrop and the weather layer (redrawn only when the
-  light or weather changes), the machinery (drawn once), the workshop (the
-  arm and plant, redrawn while the arm moves) and the words on screen.
+- `scene/` draws. `hangar.gd` is the scene decided at gate B and after the
+  milestone 5 mock-ups: inside the hangar beside the airship's front third,
+  looking out the big door. It takes the daylight, the weather, the
+  airship's progress (`App.airship_progress()`, 40 built plants a ship) and
+  the garden's count from the core, and draws only when they change. The
+  workshop corner (`machinery.gd` drawn once, `workshop.gd` redrawn while the
+  arm moves) stands in the left foreground, and `hud.gd` holds the words.
 - `core/` holds the rules, which draw nothing and run no timers: `app.gd`
   ties them together and returns events saying what changed;
   `options.gd` is the only reader of the environment (the `AIRSHIP_*`
