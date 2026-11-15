@@ -33,10 +33,6 @@ enum Event {
 	MUTED,
 }
 
-## Built plants that fill in one airship. A stand-in until milestone 6 brings
-## parts and fitting: 40 full sessions, about 17 hours of focus.
-const PLANTS_PER_AIRSHIP := 40
-
 ## The desktop's accent until the theme says otherwise (4d), as in Grove.
 const DEFAULT_ACCENT := Color("#ffd60a")
 
@@ -123,10 +119,16 @@ func set_muted(value: bool) -> Array[int]:
 	return [Event.MUTED]
 
 
-## How far the airship in the hangar is built, 0 to 1: one fortieth for
-## each plant built to the end. Rusted plants add nothing.
+## How far the airship in the hangar is built, 0 to 1, from the parts the
+## garden's plants have made (core/parts.gd).
 func airship_progress() -> float:
-	return minf(float(garden.built()) / PLANTS_PER_AIRSHIP, 1.0)
+	return Parts.airship_built(Parts.made(garden.plants()))
+
+
+## The blueprint to build next when nobody chooses: the plant whose parts
+## the airship is shortest of.
+func next_blueprint() -> int:
+	return Parts.most_needed(garden.plants())
 
 
 ## How loud a sound is played, 0 to 1.
