@@ -1,6 +1,6 @@
 extends "res://scene/corner_canvas.gd"
 ## The live part of the scene: the arm building the plant, the boiler's fire
-## and gauge, the parts in the hopper, the planter's front and the steam,
+## and gauge, the parts bin's front, the planter's front and the steam,
 ## stood on the hangar's floor (corner_canvas.gd). Redrawn every frame while
 ## the arm works.
 ##
@@ -13,6 +13,8 @@ const Machinery := preload("res://scene/machinery.gd")
 const BASE := Vector2(262, 640)
 const UPPER := 235.0
 const FORE := 225.0
+## From the wrist to the point between the jaws, where a held part is.
+const GRIP := 30.0
 const PLANT_X := 450.0
 const GROUND := 640.0
 const HEAD := Vector2(450, 318)
@@ -38,25 +40,49 @@ var _kinds: Array[int] = []
 # shortened one plays it faster).
 var _t := 0.0
 var _boiler_steam: GPUParticles2D
-var _piston_steam: GPUParticles2D
+# One vent on each piston, puffing while it draws in.
+var _upper_steam: GPUParticles2D
+var _fore_steam: GPUParticles2D
+
+
+## Where the arm's bones and pistons are for one reach of the gripper.
+class Limbs:
+	var shoulder: Vector2
+	var elbow: Vector2
+	var wrist: Vector2
+	## Along the forearm.
+	var dir: Vector2
+	## Each piston: its cylinder's foot and its rod's end.
+	var upper_foot: Vector2
+	var upper_end: Vector2
+	var fore_foot: Vector2
+	var fore_end: Vector2
 
 
 func _ready() -> void:
 	plan = BuildPlan.new(_targets())
 	_boiler_steam = _steam(VALVE, 26, 3.2, 0.9)
-	_piston_steam = _steam(BASE + Vector2(48, -70), 18, 1.4, 1.3)
+	# Placed on their pistons each time the session is shown. They start
+	# from nothing, where the boiler's plume stands ready: a piston's puff
+	# begins small each time it draws in.
+	_upper_steam = _steam(BASE, 14, 1.1, 1.5)
+	_fore_steam = _steam(BASE, 12, 1.0, 1.5)
+	_upper_steam.preprocess = 0.0
+	_fore_steam.preprocess = 0.0
 	show_session(state, progress)
 
 
-## Puts the corner on the hangar's floor, and the steam vents where the
-## boiler's valve and the arm's piston land, sized for the distance.
+## Puts the corner on the hangar's floor, and the boiler's steam vent
+## where its valve lands, sized for the distance.
 func stand_in(hangar_: Hangar) -> void:
 	super.stand_in(hangar_)
-	for vent: Array in [[_boiler_steam, VALVE], [_piston_steam, BASE + Vector2(48, -70)]]:
-		var particles := vent[0] as GPUParticles2D
-		var spot := vent[1] as Vector2
-		particles.position = at(spot)
-		particles.scale = Vector2.ONE * px(spot)
+	_place(_boiler_steam, VALVE)
+	show_session(state, progress)
+
+
+func _place(vent: GPUParticles2D, spot: Vector2) -> void:
+	vent.position = at(spot)
+	vent.scale = Vector2.ONE * px(spot)
 
 
 ## Shows the session as it stands, and lets the steam run while the arm
@@ -70,7 +96,16 @@ func show_session(state_: Session.State, progress_: float) -> void:
 	var pose := _pose()
 	var working := state == Session.State.BUILDING
 	_boiler_steam.emitting = working and not pose.resting
-	_piston_steam.emitting = working and pose.lifting
+	# A piston vents its spent steam as it draws in: found by looking a
+	# moment back in the plan, so nothing is remembered between frames.
+	var now := _limbs(pose.tip)
+	var before := _limbs(_pose_at(_t - 0.4).tip)
+	var moving := working and not pose.resting
+	_upper_steam.emitting = moving and now.upper_foot.distance_to(now.upper_end) < before.upper_foot.distance_to(before.upper_end) - 0.25
+	_fore_steam.emitting = moving and now.fore_foot.distance_to(now.fore_end) < before.fore_foot.distance_to(before.fore_end) - 0.25
+	if hangar != null:
+		_place(_upper_steam, now.upper_foot.lerp(now.upper_end, 0.55))
+		_place(_fore_steam, now.fore_foot.lerp(now.fore_end, 0.55))
 	queue_redraw()
 
 
@@ -83,8 +118,12 @@ func resting_for() -> float:
 
 
 func _pose() -> BuildPlan.Pose:
+	return _pose_at(_t)
+
+
+func _pose_at(t: float) -> BuildPlan.Pose:
 	if state == Session.State.BUILDING or state == Session.State.RUSTED:
-		var pose := plan.pose(_t)
+		var pose := plan.pose(t)
 		if state == Session.State.RUSTED:
 			# Seized where it stood: no part in hand, the arm back at rest.
 			pose.carrying = -1
@@ -168,13 +207,13 @@ func _draw() -> void:
 		return
 	var pose := _pose()
 	_draw_boiler_live()
-	_draw_hopper(pose)
 	_draw_plant(pose.placed)
 	# The planter's front, after the plant: its foot is in the soil.
 	box_front(320, 580, Machinery.PLANTER_HIGH, Machinery.PLANTER_DEEP, Machinery.TIMBER)
 	for x: float in [322.0, 578.0]:
 		line(Vector2(x, GROUND - Machinery.PLANTER_HIGH), Vector2(x, GROUND), lit(BRASS.darkened(0.1)), 4.0, Machinery.PLANTER_DEEP * 0.5)
 	_draw_arm(pose)
+	_draw_bin_front()
 
 
 ## The parts of the boiler that move: the firebox's flicker and the gauge's
@@ -182,17 +221,24 @@ func _draw() -> void:
 func _draw_boiler_live() -> void:
 	# The fire burns only while the arm works.
 	var fire := Color(1.0, 0.45 + 0.1 * sin(_t * 3.1), 0.12) if state == Session.State.BUILDING else Color(0.32, 0.12, 0.06)
-	rect(Rect2(52, 596, 42, 18), fire)
+	plate(73, Machinery.DOOR_TOP + 7, Machinery.DOOR_BOTTOM - 7, 43.5, Machinery.DOOR_HALF - 0.16, fire)
 	var gauge := Vector2(73, 505)
 	var needle := deg_to_rad(200.0 + 120.0 * (0.5 + 0.35 * sin(_t * 0.7)))
 	line(gauge, gauge + Vector2(cos(needle), sin(needle)) * 13, Color(0.6, 0.1, 0.05), 2.0)
 
 
-## A few parts left in the hopper, fewer as the plant grows.
-func _draw_hopper(pose: BuildPlan.Pose) -> void:
-	var left := maxi(0, 6 - (pose.placed >> 2))
-	for k in left:
-		circle(Vector2(612 + k * 11, 476), 5, BRASS.lightened(0.1))
+## The bin's front, over the arm: the gripper goes down behind it empty and
+## comes up holding a part.
+func _draw_bin_front() -> void:
+	var left := Machinery.BIN_LEFT
+	var right := Machinery.BIN_RIGHT
+	var rim := GROUND - Machinery.BIN_HIGH
+	var out := Machinery.BIN_DEEP * 0.5
+	box_front(left, right, Machinery.BIN_HIGH, Machinery.BIN_DEEP, BRASS_DARK)
+	line(Vector2(left, rim + 3), Vector2(right, rim + 3), lit(BRASS, _toward), 7.0, out)
+	line(Vector2(left, GROUND - 4), Vector2(right, GROUND - 4), lit(BRASS_DARK.darkened(0.3), _toward), 6.0, out)
+	for x: float in [left + 3, right - 3]:
+		line(Vector2(x, rim), Vector2(x, GROUND), lit(BRASS.darkened(0.1), _toward), 5.0, out)
 
 
 func _draw_plant(placed: int) -> void:
@@ -231,36 +277,49 @@ func _tone(colour: Color) -> Color:
 	return colour.lerp(RUST, 0.65) if state == Session.State.RUSTED else colour
 
 
-## Two bones reaching for the gripper's point, the elbow kept high.
-func _elbow(target: Vector2) -> Vector2:
+## Two bones reaching so that the point between the jaws is at `target`,
+## the elbow kept high; and the two pistons that work them, each pinned
+## at both ends: pedestal to upper arm, upper arm to forearm.
+func _limbs(target: Vector2) -> Limbs:
+	var limbs := Limbs.new()
+	var reach := FORE + GRIP
 	var to := target - BASE
-	var d := clampf(to.length(), absf(UPPER - FORE) + 1.0, UPPER + FORE - 1.0)
-	var cos_a := (UPPER * UPPER + d * d - FORE * FORE) / (2.0 * UPPER * d)
+	var d := clampf(to.length(), absf(UPPER - reach) + 1.0, UPPER + reach - 1.0)
+	var cos_a := (UPPER * UPPER + d * d - reach * reach) / (2.0 * UPPER * d)
 	var a := acos(clampf(cos_a, -1.0, 1.0))
-	var dir := to.normalized()
-	var one := BASE + dir.rotated(a) * UPPER
-	var two := BASE + dir.rotated(-a) * UPPER
-	return one if one.y < two.y else two
+	var toward := to.normalized()
+	var one := BASE + toward.rotated(a) * UPPER
+	var two := BASE + toward.rotated(-a) * UPPER
+	limbs.elbow = one if one.y < two.y else two
+	limbs.dir = (target - limbs.elbow).normalized()
+	limbs.wrist = limbs.elbow + limbs.dir * FORE
+	limbs.shoulder = BASE + Vector2(0, -40)
+	limbs.upper_foot = BASE + Vector2(44, -10)
+	limbs.upper_end = limbs.shoulder.lerp(limbs.elbow, 0.55)
+	# The forearm's piston is pinned to both bones, across the elbow's bend.
+	limbs.fore_foot = limbs.shoulder.lerp(limbs.elbow, 0.45)
+	limbs.fore_end = limbs.elbow + limbs.dir * 78.0
+	return limbs
 
 
 func _draw_arm(pose: BuildPlan.Pose) -> void:
-	var elbow := _elbow(pose.tip)
-	var wrist := elbow + (pose.tip - elbow).normalized() * FORE
+	var limbs := _limbs(pose.tip)
+	var shoulder := limbs.shoulder
+	var elbow := limbs.elbow
+	var wrist := limbs.wrist
 	# Pedestal.
 	polygon(PackedVector2Array([BASE + Vector2(-46, 0), BASE + Vector2(46, 0), BASE + Vector2(30, -40), BASE + Vector2(-30, -40)]), IRON)
-	circle(BASE + Vector2(0, -40), 26, BRASS_DARK)
-	var shoulder := BASE + Vector2(0, -40)
+	circle(shoulder, 26, BRASS_DARK)
 	_bone(shoulder, elbow, 20.0)
-	# A steam piston along the upper arm.
-	var piston_root := BASE + Vector2(44, -10)
-	var piston_end := shoulder.lerp(elbow, 0.55)
-	line(piston_root, piston_root.lerp(piston_end, 0.55), IRON, 12.0)
-	line(piston_root.lerp(piston_end, 0.5), piston_end, Color(0.80, 0.80, 0.78), 5.0)
+	# A steam piston lifts the upper arm from the pedestal.
+	_piston(limbs.upper_foot, limbs.upper_end, 12.0)
 	_bone(elbow, wrist, 15.0)
+	# And another, from the upper arm, swings the forearm about the elbow.
+	_piston(limbs.fore_foot, limbs.fore_end, 9.0)
 	_joint(shoulder, 22.0)
 	_joint(elbow, 17.0)
 	# The gripper: two jaws that open and close.
-	var dir := (wrist - elbow).normalized()
+	var dir := limbs.dir
 	var spread := 8.0 + 12.0 * pose.open
 	for s: float in [-1.0, 1.0]:
 		var root := wrist + dir.orthogonal() * s * 6.0
@@ -269,7 +328,16 @@ func _draw_arm(pose: BuildPlan.Pose) -> void:
 		line(tip, tip - dir.orthogonal() * s * 7.0 + dir * 4.0, BRASS_DARK, 5.0)
 	_joint(wrist, 10.0)
 	if pose.carrying >= 0:
-		_draw_part(pose.carrying, wrist + dir * 30.0)
+		_draw_part(pose.carrying, wrist + dir * GRIP)
+
+
+## A piston: its iron cylinder from the foot, the bright rod sliding out of
+## it to the far end, a pin at each.
+func _piston(foot: Vector2, end: Vector2, width: float) -> void:
+	line(foot.lerp(end, 0.5), end, Color(0.80, 0.80, 0.78), width * 0.42)
+	line(foot, foot.lerp(end, 0.55), IRON, width)
+	circle(foot, width * 0.55, BRASS_DARK)
+	circle(end, width * 0.5, BRASS_DARK)
 
 
 func _bone(a: Vector2, b: Vector2, width: float) -> void:

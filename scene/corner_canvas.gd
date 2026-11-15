@@ -9,7 +9,7 @@ extends Node2D
 ## is placed on the plane and seen through the hangar's camera, so the
 ## corner has the hangar's perspective; the drawing calls below take the
 ## flat coordinates and scale widths and radii for distance. Solid things
-## (the boiler, the planter) are drawn as real 3D shapes, lit as the hangar
+## (the boiler, the planter, the parts bin) are drawn as real 3D shapes, lit as the hangar
 ## lights its brass and timber.
 
 const Hangar := preload("res://scene/hangar.gd")
@@ -175,10 +175,10 @@ func _shade_round(colour: Color, normal: Vector3, view: Vector3) -> Color:
 	return Color(colour.r * f, colour.g * f, colour.b * f, colour.a)
 
 
-## An open box on the floor (the planter): flat x from `left` to `right`,
+## An open box on the floor (the planter, the parts bin): flat x from `left` to `right`,
 ## `high` units tall, `deep` feet from front to back, filled to its rim with
 ## `fill`; its fill and end shown. Its front is box_front(), drawn by the
-## workshop after the plant, so the plant's foot is in the box.
+## workshop after what stands or reaches into it, so that is in the box.
 func box(left: float, right: float, high: float, deep: float, base: Color, fill: Color) -> void:
 	var front := deep * 0.5
 	var back := -deep * 0.5
@@ -195,7 +195,7 @@ func box(left: float, right: float, high: float, deep: float, base: Color, fill:
 	draw_colored_polygon(end, lit(base.darkened(0.25), _across))
 
 
-## The planter's front face, `deep` as in box().
+## An open box's front face, `deep` as in box().
 func box_front(left: float, right: float, high: float, deep: float, base: Color) -> void:
 	var front := deep * 0.5
 	var floor_y := FLOOR_Y
@@ -223,3 +223,26 @@ func band(centre_x: float, y: float, r: float, colour: Color, rivet: Color) -> v
 	draw_polyline(points, colour, maxf(3.0 * sizes[6], 0.6), true)
 	for k in range(1, 12, 2):
 		draw_circle(points[k], maxf(1.8 * sizes[k], 0.5), rivet)
+
+
+## A plate on the face of an upright cylinder (as cylinder() draws it),
+## bent to its curve: from flat height `top` down to `bottom`, reaching
+## `half` radians round to each side of the point that faces the eye,
+## shaded round as the cylinder is.
+func plate(centre_x: float, top: float, bottom: float, r: float, half: float, base: Color) -> void:
+	var steps := 8
+	var view := (hangar._cam - world(Vector2(centre_x, bottom))).normalized()
+	# Its middle faces the eye, as the boiler's bands do.
+	var front := Vector3(view.x, 0.0, view.z).normalized()
+	var edge := front.cross(Vector3.UP).normalized()
+	for k in steps:
+		var t0 := lerpf(-half, half, float(k) / steps)
+		var t1 := lerpf(-half, half, float(k + 1) / steps)
+		var o0 := front * cos(t0) + edge * sin(t0)
+		var o1 := front * cos(t1) + edge * sin(t1)
+		var quad := PackedVector2Array([
+			_screen(world(Vector2(centre_x, top)) + o0 * r * FEET * 1.01), _screen(world(Vector2(centre_x, top)) + o1 * r * FEET * 1.01),
+			_screen(world(Vector2(centre_x, bottom)) + o1 * r * FEET * 1.01), _screen(world(Vector2(centre_x, bottom)) + o0 * r * FEET * 1.01)])
+		var c0 := _shade_round(base, o0, view)
+		var c1 := _shade_round(base, o1, view)
+		draw_polygon(quad, PackedColorArray([c0, c1, c1, c0]))
