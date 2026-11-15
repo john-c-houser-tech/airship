@@ -31,6 +31,8 @@ enum Event {
 	SOUNDS_ENDED,
 	## The sounds were muted or unmuted.
 	MUTED,
+	## A step of the break was taken: `break_step()` says what comes next.
+	BREAK,
 	## Another plant was chosen to build next: `blueprint()` says which.
 	## (A plant built to the end changes it too, with GARDEN.)
 	BLUEPRINT,
@@ -58,6 +60,27 @@ var garden_change := Garden.Change.RESET
 # The blueprint chosen for the next session, or -1 for the one most needed.
 # A plant built to the end clears it: the garden's needs have moved on.
 var _chosen := -1
+# The plant just built still stands on the planter, waiting to be planted
+# out. Not saved: a new session, or a new start, plants it.
+var _to_plant := false
+# A finished plant stands on the planter: the one to plant, or a trial
+# session's, which is never kept and stands there until the next session.
+var _on_planter := false
+# The parts picked from the garden's plants in this run, by kind: at least
+# those fitted. Not saved: after a new start they are picked again.
+var _collected: Array[int] = []
+
+## What the break after a session asks for, one thing at a time.
+enum BreakStep {
+	## Nothing left to do.
+	NONE,
+	## Plant the new plant out in the garden.
+	PLANT,
+	## Pick the parts the garden's plants have made.
+	COLLECT,
+	## Fit the picked parts to the airship.
+	FIT,
+}
 ## Local time as YYYY-MM-DDTHH:MM:SS: when a plant was finished, and, unless
 ## AIRSHIP_DATE or AIRSHIP_TIME pin them, the season and the light. Tests
 ## replace it.
@@ -86,6 +109,9 @@ func _init(options_: Options) -> void:
 func start(blueprint: int, plant_seed: int) -> Array[int]:
 	var changes := session.start(blueprint, plant_seed)
 	if changes.state:
+		# A plant still on the planter goes out to the garden: the arm needs it.
+		_to_plant = false
+		_on_planter = false
 		weather.begin(plant_seed, _month())
 		# Its own numbers from the seed, so the sounds don't follow the weather.
 		_sound_plan = Sounds.roll(Random.new(plant_seed ^ 0x5_0D5), options.sound_test,
@@ -125,16 +151,83 @@ func set_muted(value: bool) -> Array[int]:
 	return [Event.MUTED]
 
 
-## How far the airship in the hangar is built, 0 to 1, from the parts the
-## garden's plants have made (core/parts.gd).
+## How far the airship in the hangar is built, 0 to 1, from the parts
+## fitted to it (core/parts.gd).
 func airship_progress() -> float:
-	return Parts.airship_built(Parts.made(garden.plants()))
+	return Parts.airship_built(garden.fitted())
+
+
+## The next thing the break asks for; NONE while the arm builds and once
+## everything is done. Each step is short and they run out, so the break
+## can't turn into the game; skipping them loses nothing, they wait.
+func break_step() -> BreakStep:
+	if session.state() == Session.State.BUILDING:
+		return BreakStep.NONE
+	if _to_plant:
+		return BreakStep.PLANT
+	var ready := Parts.waiting(Parts.made(garden.plants()), garden.fitted())
+	var picked := Parts.waiting(_picked(), garden.fitted())
+	for kind in Parts.KINDS:
+		if ready[kind] > picked[kind]:
+			return BreakStep.COLLECT
+	for kind in Parts.KINDS:
+		if picked[kind] > 0:
+			return BreakStep.FIT
+	return BreakStep.NONE
+
+
+## Takes the break's next step, if there is one.
+func take_break_step() -> Array[int]:
+	match break_step():
+		BreakStep.PLANT:
+			_to_plant = false
+			_on_planter = false
+			return [Event.BREAK, Event.GARDEN]
+		BreakStep.COLLECT:
+			_collected = Parts.made(garden.plants())
+			return [Event.BREAK]
+		BreakStep.FIT:
+			var problem_before := garden.problem()
+			var fitted := garden.fitted()
+			var picked := Parts.waiting(_picked(), fitted)
+			var total: Array[int] = []
+			for kind in Parts.KINDS:
+				total.append((fitted[kind] if kind < fitted.size() else 0) + picked[kind])
+			garden.fit(total)
+			# Fitting reads the file again, another Airship's plants and all.
+			garden_change = Garden.Change.RESET
+			var events: Array[int] = [Event.BREAK, Event.GARDEN]
+			if garden.problem() != problem_before:
+				events.append(Event.GARDEN_PROBLEM)
+			return events
+	return []
+
+
+## Whether the plant just built has been planted out (or there is none):
+## whether the garden shows every plant it holds.
+func planted() -> bool:
+	return not _to_plant
+
+
+## Whether a finished plant stands on the planter.
+func on_planter() -> bool:
+	return _on_planter
+
+
+# The parts picked so far, by kind, a count for every kind: never more
+# than the garden has made, should its plants have changed since.
+func _picked() -> Array[int]:
+	var made := Parts.made(garden.plants())
+	var picked: Array[int] = []
+	for kind in Parts.KINDS:
+		picked.append(mini(_collected[kind], made[kind]) if kind < _collected.size() else 0)
+	return picked
 
 
 ## The blueprint to build next when nobody chooses: the plant whose parts
 ## the airship is shortest of.
 func next_blueprint() -> int:
-	return Parts.most_needed(garden.plants())
+	return Parts.most_needed(garden.plants(), Parts.unlocked(airship_progress()))
 
 
 ## The blueprint the next session builds: the one chosen, or the one most
@@ -206,6 +299,8 @@ func _session_changed(changes: Session.Changes, weather_moved := false) -> Array
 		# Given up or finished: a sound under way fades, any to come are dropped.
 		_sound_plan = null
 		events.append(Event.SOUNDS_ENDED)
+	if changes.state and session.state() == Session.State.BUILT:
+		_on_planter = true
 	if changes.state and session.state() in [Session.State.BUILT, Session.State.RUSTED]:
 		# A shortened test session (AIRSHIP_SECONDS) isn't kept unless a
 		# garden is given, so trying Airship out never adds make-believe
@@ -234,6 +329,7 @@ func _record() -> Array[int]:
 	if built:
 		events.append(Event.PLANT_BUILT)
 		_chosen = -1
+		_to_plant = true
 	if garden.problem() != problem_before:
 		events.append(Event.GARDEN_PROBLEM)
 	return events

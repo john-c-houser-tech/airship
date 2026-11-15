@@ -1,7 +1,10 @@
 class_name Garden
 extends RefCounted
 ## Every plant the arm built or left to rust, kept in one small JSON file so
-## the garden fills up over days. The newest plant comes first.
+## the garden fills up over days. The newest plant comes first. The file
+## also keeps how many parts of each kind have been fitted to the airship
+## (core/parts.gd says what the kinds are): the one thing the plants
+## themselves can't tell.
 ##
 ## Grove's garden.rs is the spec. What Godot can't do the same way:
 ## - No file locks: a lock folder beside the file stands in (making a folder
@@ -42,6 +45,8 @@ const OUTCOME_NAMES: Array[String] = ["built", "rusted"]
 const LOCK_WAIT_MS := 5000
 ## A lock folder older than this was left by a program that died holding it.
 const STALE_LOCK_SECONDS := 60
+## More kinds of part than this in a file isn't a garden.
+const MOST_KINDS := 64
 ## The garden's own reasons a save failed, in English; the window translates
 ## them (i18n/), while the system's own words come through as they are.
 const OUT_OF_RANGE := "the plant's values are out of range"
@@ -83,6 +88,10 @@ var _plants: Array[Plant] = []
 # Plants that couldn't be saved yet (busy, no folder, a failed write), newest
 # first: they go in with the next save, so a passing problem loses none.
 var _unsaved: Array[Plant] = []
+# Parts fitted to the airship, by kind; and what the file last read said.
+# Fitted parts only ever grow, so two windows' counts merge by the larger.
+var _fitted: Array[int] = []
+var _file_fitted: Array[int] = []
 # Written inside the lock folder while this garden holds it, so it only ever
 # lets go of its own lock.
 var _lock_token := ""
@@ -102,6 +111,7 @@ func _init(path: String) -> void:
 	var found: Variant = _read()
 	if found is Array:
 		_plants = found as Array[Plant]
+		_fitted = _file_fitted.duplicate()
 	elif found == Problem.CANNOT_OPEN or found == Problem.CANNOT_READ:
 		_read_only = true
 		_problem = found as Problem
@@ -137,6 +147,71 @@ func focused_minutes() -> int:
 		if p.outcome == Outcome.BUILT:
 			total += p.minutes
 	return total
+
+
+## The parts fitted to the airship so far, by kind (as long as the longest
+## count ever fitted: a kind past its end has none).
+func fitted() -> Array[int]:
+	return _fitted.duplicate()
+
+
+## Fits parts to the airship: `counts` is the new total fitted of each kind,
+## and a kind never goes down. Saved as record() saves a plant, under the
+## lock and over the file as it is now; if it can't be saved it still
+## shows, `problem()` says why, and it goes in with the next save (never,
+## for a garden whose file can't be read or that is kept nowhere).
+func fit(counts: Array[int]) -> void:
+	# Only what the file can read back: no more kinds or parts than it allows.
+	var within: Array[int] = []
+	for k in mini(counts.size(), MOST_KINDS):
+		within.append(mini(counts[k], 2147483647))
+	_fitted = _most(_fitted, within)
+	if _read_only:
+		if _path.is_empty():
+			_problem = Problem.NO_FOLDER
+		return
+	var folder := _path.get_base_dir()
+	DirAccess.make_dir_recursive_absolute(folder)
+	if not DirAccess.dir_exists_absolute(folder):
+		_problem = Problem.NO_FOLDER
+		return
+	var locked := _take_lock()
+	if locked != OK:
+		if locked == ERR_BUSY:
+			_problem = Problem.BUSY
+		else:
+			save_error = NOTHING_WRITABLE
+			_problem = Problem.CANNOT_SAVE
+		return
+	var found: Variant = _read()
+	if not found is Array:
+		if found != Problem.NONE:
+			_let_go_of_lock()
+			_read_only = true
+			_problem = Problem.CANNOT_READ
+			return
+		# No file yet: the lock is kept while the first one is written.
+		found = [] as Array[Plant]
+	var plants := found as Array[Plant]
+	for k in range(_unsaved.size() - 1, -1, -1):
+		plants.push_front(_unsaved[k])
+	_plants = plants
+	_fitted = _most(_fitted, _file_fitted)
+	save_error = _save()
+	_let_go_of_lock()
+	if save_error.is_empty():
+		_unsaved.clear()
+		_problem = Problem.NONE
+	else:
+		_problem = Problem.CANNOT_SAVE
+
+
+## The larger of two counts, kind by kind.
+static func _most(a: Array[int], b: Array[int]) -> Array[int]:
+	var out: Array[int] = []
+	for k in maxi(a.size(), b.size()):
+		out.append(maxi(a[k] if k < a.size() else 0, b[k] if k < b.size() else 0))
+	return out
 
 
 ## NONE when the garden is fine, otherwise why it can't be read or saved.
@@ -176,13 +251,17 @@ func record(plant: Plant) -> Change:
 		return _keep_unsaved(plant, Problem.CANNOT_SAVE)
 	var found: Variant = _read()
 	if not found is Array:
-		_let_go_of_lock()
 		if found != Problem.NONE:
 			# Changed into something that can't be read since: leave it be.
+			_let_go_of_lock()
 			_read_only = true
 			return _keep_unsaved(plant, Problem.CANNOT_READ)
+		# No file yet: the lock is kept while the first one is written, so
+		# two Airships starting a garden at once don't lose one's plant.
 		found = [] as Array[Plant]
 	var plants := found as Array[Plant]
+	# What another Airship fitted since is kept too.
+	_fitted = _most(_fitted, _file_fitted)
 	_unsaved.push_front(plant)
 	for k in range(_unsaved.size() - 1, -1, -1):
 		plants.push_front(_unsaved[k])
@@ -208,6 +287,7 @@ func _keep_unsaved(plant: Plant, why: Problem) -> Change:
 ## The file as it is now: the plants newest first, or Problem.NONE if there
 ## is no file, or the problem reading it.
 func _read() -> Variant:
+	_file_fitted = []
 	if not FileAccess.file_exists(_path):
 		# A link to a garden that isn't there (a synced folder that hasn't
 		# arrived yet) isn't an empty garden: don't start a new one there.
@@ -230,6 +310,16 @@ func _read() -> Variant:
 	# saving over it would drop that.
 	if _whole((json.data as Dictionary).get("version", 1)) != 1:
 		return Problem.CANNOT_READ
+	# Parts fitted to the airship: absent in a garden from before there were
+	# parts, else whole numbers, none below zero.
+	var fitted_entry: Variant = (json.data as Dictionary).get("fitted", [])
+	if not fitted_entry is Array or (fitted_entry as Array).size() > MOST_KINDS:
+		return Problem.CANNOT_READ
+	var fitted_read: Array[int] = []
+	for count: Variant in fitted_entry as Array:
+		if _whole(count) < 0:
+			return Problem.CANNOT_READ
+		fitted_read.append(_whole(count))
 	# On disk the oldest plant comes first; the garden wants newest first.
 	var plants: Array[Plant] = []
 	for entry: Variant in list as Array:
@@ -237,6 +327,7 @@ func _read() -> Variant:
 		if plant == null:
 			return Problem.CANNOT_READ
 		plants.push_front(plant)
+	_file_fitted = fitted_read
 	return plants
 
 
@@ -247,7 +338,14 @@ func _save() -> String:
 	for k in range(_plants.size() - 1, -1, -1):
 		# Oldest first on disk, so a new plant is a simple append in the file.
 		entries.append(_plant_to(_plants[k]))
-	var text := JSON.stringify({"version": 1, "plants": entries}, "  ", false) + "\n"
+	# Still version 1: an Airship from before parts reads this file, and
+	# saving there only drops the fitted counts (the parts are picked and
+	# fitted again); a version 2 would stop it saving its sessions at all.
+	var whole := {"version": 1, "plants": entries}
+	# Only once something is fitted, so a garden without parts reads as before.
+	if _fitted.any(func(count: int) -> bool: return count > 0):
+		whole["fitted"] = _fitted
+	var text := JSON.stringify(whole, "  ", false) + "\n"
 	# The file itself, if the garden is a link to one kept elsewhere
 	# (dotfiles, a synced folder): the link stays, and what it points at is
 	# what's replaced.

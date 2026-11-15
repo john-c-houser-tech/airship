@@ -331,6 +331,16 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, SIZE, SIZE), daylight.warm_tint())
 
 
+## The door's opening on screen (760 across), corner by corner: what is seen
+## through it is the garden and the valley.
+func door_outline() -> PackedVector2Array:
+	var outline := PackedVector2Array()
+	for corner: Vector3 in [Vector3(-DOOR_HALF_W, 0, DOOR_Z), Vector3(-DOOR_HALF_W, DOOR_H, DOOR_Z),
+			Vector3(DOOR_HALF_W, DOOR_H, DOOR_Z), Vector3(DOOR_HALF_W, 0, DOOR_Z)]:
+		outline.append(_project(_to_cam(corner)))
+	return outline
+
+
 ## The clear sky's colour at a height on screen under `light`, as
 ## _draw_sky lays it (for bin/test's frame check, which gives the core's own
 ## daylight, so a hangar the window never fed fails it).

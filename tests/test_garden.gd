@@ -283,3 +283,93 @@ func test_letting_go_never_removes_someone_elses_lock() -> void:
 	garden._lock_token = "mine"
 	garden._let_go_of_lock()
 	check(DirAccess.dir_exists_absolute(path + ".lock"), "their lock stays")
+
+
+func test_fitted_parts_are_kept_with_the_plants() -> void:
+	var path := _folder("fitted").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1))
+	check(not (JSON.parse_string(_text(path)) as Dictionary).has("fitted"), "nothing about parts until one is fitted")
+	same(garden.fitted(), [] as Array[int], "none fitted")
+	garden.fit([0, 0, 2, 1, 0] as Array[int])
+	same(garden.problem(), Garden.Problem.NONE, "saved")
+	var again := Garden.new(path)
+	same(again.fitted(), [0, 0, 2, 1, 0] as Array[int], "read back")
+	same(_seeds(again), [1] as Array[int], "the plants are still there")
+	again.record(_plant(2))
+	same(Garden.new(path).fitted(), [0, 0, 2, 1, 0] as Array[int], "a new plant keeps what was fitted")
+
+
+func test_fitted_parts_never_go_down_and_two_windows_merge() -> void:
+	var path := _folder("fitted-merge").path_join("garden.json")
+	var one := Garden.new(path)
+	var two := Garden.new(path)
+	one.fit([0, 0, 3] as Array[int])
+	two.fit([1, 0, 1, 2] as Array[int])
+	same(Garden.new(path).fitted(), [1, 0, 3, 2] as Array[int], "the larger of each kind, from both windows")
+	one.fit([0, 0, 0] as Array[int])
+	same(one.fitted(), [1, 0, 3, 2] as Array[int], "fitting fewer takes nothing off")
+	two.record(_plant(5))
+	same(two.fitted(), [1, 0, 3, 2] as Array[int], "recording a plant picks up the other window's parts")
+
+
+func test_a_garden_with_bad_fitted_parts_is_left_alone() -> void:
+	for bad: Variant in ["three", [1, -1], [1.5], [1, "two"], null, [3e9]]:
+		var path := _folder("fitted-bad").path_join("garden.json")
+		var text := JSON.stringify({"version": 1, "plants": [Garden._plant_to(_plant(1))], "fitted": bad})
+		_write(path, text)
+		var garden := Garden.new(path)
+		same(garden.problem(), Garden.Problem.CANNOT_READ, "not a garden: %s" % str(bad))
+		garden.fit([1] as Array[int])
+		same(_text(path), text, "and never saved over")
+
+
+func test_fitting_in_a_garden_kept_nowhere_still_shows() -> void:
+	var garden := Garden.new("")
+	garden.fit([0, 2] as Array[int])
+	same(garden.fitted(), [0, 2] as Array[int], "shown")
+	same(garden.problem(), Garden.Problem.NO_FOLDER, "and it says it isn't kept")
+
+
+func test_parts_fitted_while_the_garden_is_busy_go_in_with_the_next_save() -> void:
+	var path := _folder("fitted-busy").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1))
+	garden.lock_wait_ms = 0
+	DirAccess.make_dir_absolute(path + ".lock")
+	garden.fit([0, 1] as Array[int])
+	same(garden.problem(), Garden.Problem.BUSY, "another Airship holds the lock")
+	same(garden.fitted(), [0, 1] as Array[int], "still shown")
+	DirAccess.remove_absolute(path + ".lock")
+	garden.record(_plant(2))
+	same(Garden.new(path).fitted(), [0, 1] as Array[int], "saved with the next plant")
+
+
+func test_fitting_starts_a_garden_file_and_carries_an_unsaved_plant() -> void:
+	var path := _folder("fitted-first").path_join("deeper").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.fit([2] as Array[int])
+	same(garden.problem(), Garden.Problem.NONE, "the folder and the file are made")
+	same(Garden.new(path).fitted(), [2] as Array[int], "read back from a garden with no plants")
+	garden.lock_wait_ms = 0
+	DirAccess.make_dir_absolute(path + ".lock")
+	garden.record(_plant(7))
+	DirAccess.remove_absolute(path + ".lock")
+	garden.fit([3] as Array[int])
+	var again := Garden.new(path)
+	same(_seeds(again), [7] as Array[int], "the plant that couldn't be saved went in with the parts")
+	same(again.fitted(), [3] as Array[int], "and the parts")
+
+
+func test_an_older_airship_dropping_the_parts_costs_only_fitting_again() -> void:
+	var path := _folder("fitted-older").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1))
+	garden.fit([0, 2] as Array[int])
+	# An Airship from before parts saves the plants and nothing else.
+	_write(path, JSON.stringify({"version": 1, "plants": [Garden._plant_to(_plant(1))]}))
+	var fresh := Garden.new(path)
+	same(fresh.problem(), Garden.Problem.NONE, "still a garden")
+	same(fresh.fitted(), [] as Array[int], "a new window sees nothing fitted")
+	garden.record(_plant(2))
+	same(Garden.new(path).fitted(), [0, 2] as Array[int], "the window that fitted them puts them back")

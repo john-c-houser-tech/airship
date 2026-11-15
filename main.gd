@@ -227,6 +227,16 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		# The break's steps: the garden is what shows through the door, the
+		# airship everything inside the hangar.
+		var through_door := Geometry2D.is_point_in_polygon(click.position, _hangar.door_outline())
+		var step := app.break_step()
+		var wants_garden := step == App.BreakStep.PLANT or step == App.BreakStep.COLLECT
+		if step != App.BreakStep.NONE and through_door == wants_garden:
+			_heard(app.take_break_step())
+		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
@@ -234,6 +244,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key.keycode == KEY_M:
 		_heard(app.set_muted(not app.muted))
+		return
+	if key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER:
+		_heard(app.take_break_step())
 		return
 	if key.keycode == KEY_LEFT or key.keycode == KEY_RIGHT:
 		_heard(app.choose(-1 if key.keycode == KEY_LEFT else 1))
@@ -256,6 +269,8 @@ func _heard(events: Array[int]) -> void:
 					# Rain and snow move while the arm works, and are still otherwise.
 					_show_sky()
 				_workshop.show_blueprint(app.session.blueprint())
+				_workshop.planted = not app.on_planter()
+				_show_break()
 				_workshop.show_session(app.session.state(), app.session.progress())
 				_hud.state = app.session.state()
 				_hud.remaining = app.session.remaining()
@@ -266,6 +281,10 @@ func _heard(events: Array[int]) -> void:
 					# A new plant changes which one the ship needs next.
 					_hud.next_plant = Parts.kind_of(app.blueprint())
 					_hud.queue_redraw()
+			App.Event.BREAK:
+				_workshop.planted = not app.on_planter()
+				_workshop.queue_redraw()
+				_show_break()
 			App.Event.BLUEPRINT:
 				_hud.next_plant = Parts.kind_of(app.blueprint())
 				_hud.queue_redraw()
@@ -303,6 +322,13 @@ func _heard(events: Array[int]) -> void:
 					_hud.queue_redraw()
 
 
+## Tells the words what the break asks for next.
+func _show_break() -> void:
+	_hud.break_step = app.break_step()
+	_hud.new_plant = Parts.kind_of(app.session.blueprint())
+	_hud.queue_redraw()
+
+
 func _show_everything() -> void:
 	_heard([App.Event.STATE, App.Event.BLUEPRINT, App.Event.GARDEN_PROBLEM, App.Event.LANGUAGE])
 	_hud.muted = app.muted
@@ -319,6 +345,9 @@ func _show_sky() -> void:
 		if plant.outcome == Garden.Outcome.BUILT:
 			plants.append(Parts.kind_of(plant.blueprint))
 	plants.reverse()
+	if not app.planted():
+		# The newest still stands on the planter.
+		plants.pop_back()
 	var moving := app.session.state() == Session.State.BUILDING
 	var now := app.weather.now()
 	_falling.show_weather(now.rain, now.snow, moving, 0.35 + 0.65 * app.daylight.ambient)

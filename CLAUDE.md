@@ -40,7 +40,9 @@ archived), whose rules and tests are the spec for Airship's rules.
   `options.gd` is the only reader of the environment (the `AIRSHIP_*`
   test knobs). `parts.gd` is the economy: five kinds of plant by blueprint,
   each making its part once per later completed session, and the parts an
-  airship needs; all worked out from the garden's plants, nothing saved.
+  airship needs; parts made are worked out from the garden's plants, and
+  the garden file keeps only the parts fitted. The break after a session
+  is `App.break_step()`: plant, collect, fit, one click or Enter each.
   Blueprints unlock as the airship grows; Left and Right choose the next
   plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.
