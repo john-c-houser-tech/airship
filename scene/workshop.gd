@@ -4,8 +4,8 @@ extends "res://scene/corner_canvas.gd"
 ## stood on the hangar's floor (corner_canvas.gd). Redrawn every frame while
 ## the arm works.
 ##
-## What it shows comes from the session alone (`state` and `progress`); the
-## window redraws it only while the arm works.
+## What it shows comes from the session alone (its blueprint, `state` and
+## `progress`); the window redraws it only while the arm works.
 
 const BuildPlan := preload("res://scene/build_plan.gd")
 const Machinery := preload("res://scene/machinery.gd")
@@ -25,7 +25,28 @@ const COPPER := Color(0.74, 0.42, 0.25)
 const IRON := Color(0.24, 0.22, 0.21)
 const RUST := Color(0.55, 0.30, 0.18)
 
-enum { STEM, LEAF, PETAL, HUB }
+const ALLOY := Color(0.70, 0.74, 0.78)
+const CANVAS := Color(0.90, 0.85, 0.72)
+
+## The shapes a plant's parts come in.
+enum { BAR, DISC, LEAF, PETAL, HUB }
+
+
+## One part of a plant: what the arm picks up, and where it sets it.
+class Piece:
+	var shape := BAR
+	## Where the arm holds it and sets it down.
+	var spot: Vector2
+	## A bar runs from its spot by this much; a leaf's root is this far off.
+	var reach: Vector2
+	## A bar's width, a disc's radius.
+	var size := 0.0
+	var colour: Color
+	## A bar's bright line along its length.
+	var shine := true
+	## A bar held by its middle (a wide one, so it fits the parts bin),
+	## where others are held by an end.
+	var centred := false
 
 var state := Session.State.IDLE
 ## How far through the session, 0 to 1.
@@ -34,8 +55,10 @@ var progress := 0.0
 ## one shortened by AIRSHIP_SECONDS.
 var time_scale := 1.0
 var plan: BuildPlan
+## The plant being built (Parts.Kind).
+var kind := Parts.Kind.GEAR_FLOWER
 
-var _kinds: Array[int] = []
+var _pieces: Array[Piece] = []
 # Seconds into the build plan, which always runs a 25-minute session (a
 # shortened one plays it faster).
 var _t := 0.0
@@ -60,7 +83,7 @@ class Limbs:
 
 
 func _ready() -> void:
-	plan = BuildPlan.new(_targets())
+	_lay_out()
 	_boiler_steam = _steam(VALVE, 26, 3.2, 0.9)
 	# Placed on their pistons each time the session is shown. They start
 	# from nothing, where the boiler's plume stands ready: a piston's puff
@@ -83,6 +106,15 @@ func stand_in(hangar_: Hangar) -> void:
 func _place(vent: GPUParticles2D, spot: Vector2) -> void:
 	vent.position = at(spot)
 	vent.scale = Vector2.ONE * px(spot)
+
+
+## Builds the plant of `blueprint` from here on.
+func show_blueprint(blueprint: int) -> void:
+	var next := Parts.kind_of(blueprint)
+	if next != kind:
+		kind = next
+		_lay_out()
+		queue_redraw()
 
 
 ## Shows the session as it stands, and lets the steam run while the arm
@@ -136,25 +168,133 @@ func _pose_at(t: float) -> BuildPlan.Pose:
 	return still
 
 
-## The spots the arm sets each part, in build order: the stem from the
-## ground up, its leaves, the gear's petals round the head, then the hub.
-func _targets() -> Array[Vector2]:
+## Lays out the plant's parts in build order, and the arm's plan to set
+## each in its place.
+func _lay_out() -> void:
+	_pieces.clear()
+	match kind:
+		Parts.Kind.PIPE_VINE:
+			_pipe_vine()
+		Parts.Kind.GIRDER_REED:
+			_girder_reed()
+		Parts.Kind.SAIL_COTTON:
+			_sail_cotton()
+		Parts.Kind.KETTLE_GOURD:
+			_kettle_gourd()
+		_:
+			_gear_flower()
 	var spots: Array[Vector2] = []
-	_kinds.clear()
+	for piece: Piece in _pieces:
+		spots.append(piece.spot)
+	plan = BuildPlan.new(spots)
+
+
+func _piece(shape: int, spot: Vector2, colour: Color, size := 0.0, reach := Vector2.ZERO, shine := true) -> void:
+	var piece := Piece.new()
+	piece.shape = shape
+	piece.spot = spot
+	piece.colour = colour
+	piece.size = size
+	piece.reach = reach
+	piece.shine = shine
+	_pieces.append(piece)
+
+
+func _leaf(spot: Vector2, stem_x: float) -> void:
+	_piece(LEAF, spot, BRASS.lerp(COPPER, 0.4), 0.0, Vector2(stem_x, spot.y + 8) - spot)
+
+
+## The gear-flower: a jointed stem, its leaves, the gear's teeth round the
+## head, then the hub.
+func _gear_flower() -> void:
 	for k in 6:
-		spots.append(Vector2(PLANT_X, GROUND - (k + 1) * 46.0))
-		_kinds.append(STEM)
+		_piece(BAR, Vector2(PLANT_X, GROUND - (k + 1) * 46.0), BRASS_DARK, 11.0, Vector2(0, 46))
 	for k in 4:
 		var side := -1.0 if k % 2 == 0 else 1.0
-		spots.append(Vector2(PLANT_X + side * 44.0, GROUND - 70.0 - k * 50.0))
-		_kinds.append(LEAF)
+		_leaf(Vector2(PLANT_X + side * 44.0, GROUND - 70.0 - k * 50.0), PLANT_X)
 	for k in 9:
 		var ang := TAU * k / 9.0 - PI * 0.5
-		spots.append(HEAD + Vector2(cos(ang), sin(ang)) * 50.0)
-		_kinds.append(PETAL)
-	spots.append(HEAD)
-	_kinds.append(HUB)
-	return spots
+		_piece(PETAL, HEAD + Vector2(cos(ang), sin(ang)) * 50.0, BRASS.lightened(0.05))
+	_piece(HUB, HEAD, BRASS, 30.0)
+
+
+## The pipe-vine: copper tubing climbing in right-angled runs, a collar at
+## each bend, leaves on the way and a valve wheel at the top.
+func _pipe_vine() -> void:
+	var pipe := COPPER
+	var at := Vector2(PLANT_X, GROUND)
+	var runs: Array[Vector2] = [Vector2(0, -52), Vector2(0, -52), Vector2(46, 0), Vector2(0, -50), Vector2(0, -50),
+		Vector2(-46, 0), Vector2(-46, 0), Vector2(0, -50), Vector2(0, -50), Vector2(46, 0), Vector2(0, -48)]
+	for k in runs.size():
+		var to := at + runs[k]
+		_piece(BAR, to, pipe, 13.0, at - to)
+		# A collar where the run turns.
+		if k + 1 < runs.size() and runs[k + 1].normalized() != runs[k].normalized():
+			_piece(DISC, to, BRASS_DARK, 10.0)
+		at = to
+	_leaf(Vector2(PLANT_X - 46, GROUND - 78), PLANT_X)
+	_leaf(Vector2(PLANT_X + 100, GROUND - 150), PLANT_X + 46)
+	_leaf(Vector2(PLANT_X - 96, GROUND - 250), PLANT_X - 46)
+	_piece(HUB, at + Vector2(0, -6), BRASS, 22.0)
+
+
+## The girder-reed: a slender lattice mast of light alloy, two rails braced
+## corner to corner, tapering to a brass tip.
+func _girder_reed() -> void:
+	var levels := 6
+	var rise := 50.0
+	for k in levels:
+		var half := 20.0 - k * 2.2
+		var above := 20.0 - (k + 1) * 2.2
+		var low := GROUND - k * rise
+		var high := low - rise
+		_piece(BAR, Vector2(PLANT_X - above, high), ALLOY, 7.0, Vector2(above - half, rise))
+		_piece(BAR, Vector2(PLANT_X + above, high), ALLOY, 7.0, Vector2(half - above, rise))
+		var side := -1.0 if k % 2 == 0 else 1.0
+		_piece(BAR, Vector2(PLANT_X + side * above, high), ALLOY.darkened(0.25), 4.0, Vector2(-side * (above + half), rise), false)
+	_piece(BAR, Vector2(PLANT_X, GROUND - levels * rise - 34.0), ALLOY, 6.0, Vector2(0, 34))
+	_piece(DISC, Vector2(PLANT_X, GROUND - levels * rise - 34.0), BRASS, 9.0)
+
+
+## The sail-cotton: a brass stem and branches, a boll of cream cloth
+## bursting at the end of each.
+func _sail_cotton() -> void:
+	var stem := BRASS_DARK
+	for k in 5:
+		_piece(BAR, Vector2(PLANT_X, GROUND - (k + 1) * 50.0), stem, 10.0, Vector2(0, 50))
+	var tips: Array[Vector2] = [Vector2(-62, -110), Vector2(64, -150), Vector2(-58, -205), Vector2(56, -250)]
+	for tip: Vector2 in tips:
+		var root := Vector2(PLANT_X, GROUND + tip.y + 34.0)
+		_piece(BAR, Vector2(PLANT_X, GROUND) + tip, stem, 6.0, root - (Vector2(PLANT_X, GROUND) + tip))
+	tips.append(Vector2(0, -262))
+	for tip: Vector2 in tips:
+		var at := Vector2(PLANT_X, GROUND) + tip
+		_piece(DISC, at, CANVAS.darkened(0.14), 24.0)
+		_piece(DISC, at + Vector2(-5, -6), CANVAS.lightened(0.08), 16.0)
+
+
+## The kettle-gourd: a short thick stalk under a copper drum built up in
+## staves, banded and riveted in brass, with a cap and a curl of vine.
+func _kettle_gourd() -> void:
+	_piece(BAR, Vector2(PLANT_X, GROUND - 44), BRASS_DARK, 14.0, Vector2(0, 44))
+	_piece(BAR, Vector2(PLANT_X, GROUND - 84), BRASS_DARK, 14.0, Vector2(0, 40))
+	_leaf(Vector2(PLANT_X - 58, GROUND - 50), PLANT_X)
+	_leaf(Vector2(PLANT_X + 58, GROUND - 62), PLANT_X)
+	# The drum: five copper staves, widest in the middle, each held by its middle.
+	var widths: Array[float] = [96.0, 124.0, 134.0, 124.0, 96.0]
+	for k in widths.size():
+		var y := GROUND - 100.0 - k * 30.0
+		_piece(BAR, Vector2(PLANT_X, y), COPPER.darkened(0.08 * absf(k - 2.0)), 32.0, Vector2(widths[k], 0))
+		_pieces[-1].centred = true
+	for y: float in [GROUND - 115.0, GROUND - 205.0]:
+		_piece(BAR, Vector2(PLANT_X, y), BRASS_DARK, 7.0, Vector2(124, 0), false)
+		_pieces[-1].centred = true
+	for k in 5:
+		_piece(DISC, Vector2(PLANT_X - 48.0 + k * 24.0, GROUND - 160.0), BRASS, 4.5)
+	_piece(BAR, Vector2(PLANT_X, GROUND - 262), BRASS_DARK, 22.0, Vector2(0, 26))
+	_piece(DISC, Vector2(PLANT_X, GROUND - 266), BRASS, 12.0)
+	_piece(BAR, Vector2(PLANT_X + 44, GROUND - 268), COPPER, 8.0, Vector2(-36, 14))
+	_piece(DISC, Vector2(PLANT_X + 46, GROUND - 270), BRASS_DARK, 6.0)
 
 
 ## A steam vent: soft white puffs that rise, swell and fade.
@@ -246,30 +386,39 @@ func _draw_plant(placed: int) -> void:
 		_draw_part(k, plan.targets[k])
 
 
-## Draws part k with its build spot at `where`: on the plant, or in the gripper.
+## Draws part k held or set at `where` (its spot, once on the plant).
 func _draw_part(k: int, where: Vector2) -> void:
-	var spot := plan.targets[k]
-	match _kinds[k]:
-		STEM:
-			line(where + Vector2(0, 46), where, _tone(BRASS_DARK), 11.0)
-			line(where + Vector2(-2, 46), where + Vector2(-2, 0), _tone(BRASS).lightened(0.15), 4.0)
-			circle(where, 7, _tone(BRASS_DARK))
+	var piece := _pieces[k]
+	var colour := _tone(piece.colour)
+	match piece.shape:
+		BAR:
+			if piece.centred:
+				where -= piece.reach * 0.5
+			line(where, where + piece.reach, colour.darkened(0.2), piece.size)
+			if piece.shine:
+				var side := piece.reach.normalized().orthogonal() * piece.size * 0.2
+				if side.x + side.y > 0.0:
+					side = -side
+				line(where + side, where + piece.reach + side, colour.lightened(0.2), piece.size * 0.36)
+		DISC:
+			circle(where, piece.size, colour.darkened(0.25))
+			circle(where, piece.size * 0.72, colour)
 		LEAF:
-			var root := where + (Vector2(PLANT_X, spot.y + 8) - spot)
+			var root := where + piece.reach
 			var leaf := PackedVector2Array([root, where.lerp(root, 0.5) + Vector2(0, -16), where, where.lerp(root, 0.5) + Vector2(0, 10)])
-			polygon(leaf, _tone(BRASS).lerp(_tone(COPPER), 0.4))
+			polygon(leaf, colour)
 			line(leaf[0], leaf[2], _tone(BRASS_DARK), 1.5)
 		PETAL:
-			var dir := (spot - HEAD).normalized()
+			var dir := (piece.spot - HEAD).normalized()
 			var side := dir.orthogonal()
 			var tooth := PackedVector2Array([where - dir * 16 + side * 13, where + dir * 8 + side * 8,
 				where + dir * 8 - side * 8, where - dir * 16 - side * 13, where - dir * 16 + side * 13])
-			polygon(tooth.slice(0, 4), _tone(BRASS).lightened(0.05))
+			polygon(tooth.slice(0, 4), colour)
 			polyline(tooth, _tone(BRASS_DARK), 1.5)
 		_:
-			circle(where, 30, _tone(BRASS_DARK))
-			circle(where, 24, _tone(BRASS).lightened(0.1))
-			circle(where, 8, _tone(BRASS_DARK))
+			circle(where, piece.size, _tone(BRASS_DARK))
+			circle(where, piece.size * 0.8, colour.lightened(0.1))
+			circle(where, piece.size * 0.27, _tone(BRASS_DARK))
 
 
 ## Brass as it stands, or seized with rust on a plant left half-built.

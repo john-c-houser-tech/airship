@@ -76,3 +76,11 @@ func test_about_fourteen_sessions_build_an_airship() -> void:
 		plants.push_front(plant)
 		sessions += 1
 	check(sessions >= 12 and sessions <= 16, "the suggested plants build a ship in %d sessions" % sessions)
+
+
+func test_blueprints_unlock_as_the_airship_grows() -> void:
+	same(Parts.unlocked(0.0), [Parts.Kind.GIRDER_REED, Parts.Kind.SAIL_COTTON] as Array[int], "frame and cloth to start")
+	same(Parts.unlocked(1.0 / 70.0), [0, 1, 2, 3] as Array[int], "the first part on the ship brings cogs and tubing")
+	same(Parts.unlocked(0.1), [0, 1, 2, 3, 4] as Array[int], "a tenth built brings the kettle-gourd")
+	same(Parts.unlocked(1.0), [0, 1, 2, 3, 4] as Array[int], "all five on a whole ship")
+	same(Parts.most_needed(_garden([2, 3])), Parts.Kind.GEAR_FLOWER, "the suggestion keeps to what is unlocked")

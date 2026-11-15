@@ -1,7 +1,8 @@
 extends Node2D
 ## The words on screen: the countdown while the arm builds, one line saying
-## what is happening and what to do next, and a line when the garden can't
-## be saved. Plain words, never the design's terms.
+## what is happening and what to do next, between sessions which plant comes
+## next and how to choose another, and a line when the garden can't be
+## saved. Plain words, never the design's terms.
 
 const SIZE := 760.0
 
@@ -11,6 +12,8 @@ var garden_problem := Garden.Problem.NONE
 var save_error := ""
 var notices_work := true
 var muted := false
+## The plant the next session builds (Parts.Kind).
+var next_plant := 0
 ## Says each line in the current language.
 var catalog := Catalog.new("en")
 
@@ -23,6 +26,8 @@ func _draw() -> void:
 	# Lines run longer in some languages: they wrap, and stack up from the
 	# bottom edge.
 	var top := _wrapped(font, SIZE - 16, next_step(), 16, Color(1, 1, 1, 0.95))
+	if state != Session.State.BUILDING:
+		top = _wrapped(font, top - 6, next_plant_line(), 14, Color(1, 1, 1, 0.85))
 	var problem := _problem()
 	if not problem.is_empty():
 		_wrapped(font, top - 8, problem, 13, Color(1.0, 0.85, 0.6))
@@ -38,6 +43,13 @@ func next_step() -> String:
 		Session.State.RUSTED:
 			return catalog.translate("Left to rust. Press Space to start building again.")
 	return catalog.translate("Press Space to start 25 minutes of focus while the arm builds.")
+
+
+## Which plant the arm builds next, what it makes, and how to choose.
+func next_plant_line() -> String:
+	var plant := catalog.translate(Parts.PLANT_NAMES[next_plant])
+	var part := catalog.translate(Parts.PART_NAMES[next_plant])
+	return catalog.translate("Next plant: %s, which makes %s. Press Left or Right to choose another.") % [plant, part]
 
 
 func _problem() -> String:

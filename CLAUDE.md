@@ -23,7 +23,7 @@ archived), whose rules and tests are the spec for Airship's rules.
   milestone 5 mock-ups: inside the hangar beside the airship's front third,
   looking out the big door. It takes the daylight, the weather, the
   airship's progress (`App.airship_progress()`, from the parts the garden has made) and
-  the garden's count from the core, and draws only when they change, into
+  the kinds of the garden's built plants from the core, and draws only when they change, into
   two cached pictures (replaying it each frame cost 69% of a core): the
   outside (sky, land, railway) and the inside (the garden, the hangar and
   the airship, clear where the door shows the outside). `passers.gd` draws
@@ -41,6 +41,8 @@ archived), whose rules and tests are the spec for Airship's rules.
   test knobs). `parts.gd` is the economy: five kinds of plant by blueprint,
   each making its part once per later completed session, and the parts an
   airship needs; all worked out from the garden's plants, nothing saved.
+  Blueprints unlock as the airship grows; Left and Right choose the next
+  plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.
 - `tests/test_*.gd` are the unit tests: each extends `TestCase`
   (`tests/test_case.gd`) and each `test_*` method is one test.
