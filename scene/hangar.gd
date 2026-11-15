@@ -50,6 +50,15 @@ var daylight: Daylight
 var conditions := Weather.Conditions.new()
 ## How many finished plants stand in the garden outside (up to six show).
 var garden_plants := 0
+## Which part this one paints: the window keeps the outside (sky, clouds,
+## land, railway) and the inside (the garden, rain, snow and fog, the hangar
+## and the airship, clear where the door shows the outside) as two pictures,
+## so a train or an airship passing goes between them: behind the door's
+## frame, the ship, the garden and the weather. ALL paints both, in order.
+enum Painting { ALL, OUTSIDE, INSIDE }
+var painting := Painting.ALL
+## The railway across the valley: this far beyond the door.
+const RAILWAY_Z := DOOR_Z + 350.0
 # How strongly the sun shines in, 0 to 1: up, high enough, not clouded over.
 var _sun := 1.0
 # How bright the day is outside, 0 (night) to 1, from the daylight.
@@ -281,16 +290,22 @@ func _draw() -> void:
 	else:
 		_ship_basis = Basis.IDENTITY
 		_ship_origin = SHIP_ORIGIN
-	_draw_sky()
-	_draw_land()
+	if painting != Painting.INSIDE:
+		_draw_sky()
+		_draw_land()
+		_draw_clouds()
+		if launched:
+			var outside := _ship_items(1.0)
+			outside.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
+			for item: Item in outside:
+				item.draw.call()
+	if painting == Painting.OUTSIDE:
+		return
+	# The garden and the weather are nearer than the railway, so a passing
+	# train goes behind them; the hangar, drawn after, hides them but for the
+	# door.
 	_draw_garden()
-	# Weather outside, behind the hangar: seen only through the door.
 	_draw_weather_outside()
-	if launched:
-		var outside := _ship_items(1.0)
-		outside.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
-		for item: Item in outside:
-			item.draw.call()
 	_draw_hangar_shell()
 	_draw_end_wall()
 	var items: Array[Item] = []
@@ -406,6 +421,7 @@ func _draw_land() -> void:
 	var dim := 0.3 + 0.7 * _day
 	_draw_hills(6000.0, 260.0, 120.0, Color(0.33, 0.45, 0.45) * dim, Color(0.55, 0.64, 0.66) * dim, 0.31)
 	_draw_hills(2400.0, 120.0, 70.0, Color(0.33, 0.47, 0.33) * dim, Color(0.42, 0.54, 0.40) * dim, 0.77)
+	_draw_railway(dim)
 
 	_draw_road()
 
@@ -430,6 +446,26 @@ func _draw_hills(dist: float, base_h: float, swing: float, top: Color, foot: Col
 				_ridge_point(a2, dist, -40), _ridge_point(az, dist, -40)],
 			[top, top, foot, foot])
 		az = a2
+
+
+## The railway across the valley: a ballast bank with its rails, and a
+## level crossing where the road meets it, a white post each side.
+func _draw_railway(dim: float) -> void:
+	var z := RAILWAY_Z
+	_flat([Vector3(-4000, 0.6, z - 7), Vector3(4000, 0.6, z - 7), Vector3(4000, 0.6, z + 7), Vector3(-4000, 0.6, z + 7)],
+		Color(0.45, 0.40, 0.34) * dim)
+	for side: float in [-2.4, 2.4]:
+		_beam(Vector3(-4000, 1.2, z + side), Vector3(4000, 1.2, z + side), 0.5, Color(0.25, 0.24, 0.24) * dim, Color(0, 0, 0, 0))
+	var crossing := _road_x(z)
+	# Beyond the track, so a passing train goes in front of them.
+	for side: float in [-14.0, 14.0]:
+		var foot := Vector3(crossing + side, 0, z + 12)
+		_beam(foot, foot + Vector3(0, 10, 0), 0.8, Color(0.92, 0.92, 0.9) * dim, Color(0, 0, 0, 0))
+
+
+## Where the railway meets the road, across the valley.
+func crossing_x() -> float:
+	return _road_x(RAILWAY_Z)
 
 
 func _road_x(z: float) -> float:
@@ -535,11 +571,9 @@ func _interior_light(z: float) -> float:
 	return (0.4 + 0.75 * t * t * t) * (0.38 + 0.62 * _day)
 
 
-## Clouds in the sky, rain and snow: all outside, behind the hangar, so
-## they show only through the door. Drawn still; their places are fixed.
-func _draw_weather_outside() -> void:
+## Clouds in the doorway's patch of sky. Drawn still; their places fixed.
+func _draw_clouds() -> void:
 	var lit := 0.15 + 0.85 * _day
-	var horizon := SIZE * 0.5 + _focal * tan(_pitch)
 	if conditions.cloud > 0.0:
 		# In the doorway's patch of sky, between the lintel and the peaks.
 		var random := Random.new(11)
@@ -549,6 +583,14 @@ func _draw_weather_outside() -> void:
 			var colour := Color(0.88, 0.89, 0.92) * lit
 			_ellipse(at, size, Color(colour, 0.6 * conditions.cloud))
 			_ellipse(at + Vector2(size.x * 0.3, -size.y * 0.35), size * 0.6, Color(colour, 0.5 * conditions.cloud))
+
+
+## Rain, snow and fog, all outside, in front of the land, the railway and
+## the garden, and behind the hangar, so they show only through the door.
+## Drawn still; their places are fixed.
+func _draw_weather_outside() -> void:
+	var lit := 0.15 + 0.85 * _day
+	var horizon := SIZE * 0.5 + _focal * tan(_pitch)
 	if conditions.rain > 0.0:
 		var random := Random.new(13)
 		for k in 220:

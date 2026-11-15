@@ -23,8 +23,13 @@ archived), whose rules and tests are the spec for Airship's rules.
   milestone 5 mock-ups: inside the hangar beside the airship's front third,
   looking out the big door. It takes the daylight, the weather, the
   airship's progress (`App.airship_progress()`, 40 built plants a ship) and
-  the garden's count from the core, and draws only when they change (into
-  a cached picture: replaying it each frame cost 69% of a core). The
+  the garden's count from the core, and draws only when they change, into
+  two cached pictures (replaying it each frame cost 69% of a core): the
+  outside (sky, land, railway) and the inside (the garden, the hangar and
+  the airship, clear where the door shows the outside). `passers.gd` draws
+  between them: the night train on the railway and the airship crossing the
+  sky by day, each while its sound plays, every frame from how far into the
+  sound it is. The
   workshop corner stands on the hangar's floor in the left foreground, seen
   through the same camera (`corner_canvas.gd`): `machinery.gd` (boiler,
   planter, hopper) is drawn when the hangar is, `workshop.gd` (the arm and
