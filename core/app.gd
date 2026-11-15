@@ -76,6 +76,8 @@ enum BreakStep {
 	NONE,
 	## Plant the new plant out in the garden.
 	PLANT,
+	## Scrape the rust off a plant that seized.
+	SCRAPE,
 	## Pick the parts the garden's plants have made.
 	COLLECT,
 	## Fit the picked parts to the airship.
@@ -165,6 +167,8 @@ func break_step() -> BreakStep:
 		return BreakStep.NONE
 	if _to_plant:
 		return BreakStep.PLANT
+	if Parts.to_scrape(garden.plants()) >= 0:
+		return BreakStep.SCRAPE
 	var ready := Parts.waiting(Parts.made(garden.plants()), garden.fitted())
 	var picked := Parts.waiting(_picked(), garden.fitted())
 	for kind in Parts.KINDS:
@@ -183,6 +187,15 @@ func take_break_step() -> Array[int]:
 			_to_plant = false
 			_on_planter = false
 			return [Event.BREAK, Event.GARDEN]
+		BreakStep.SCRAPE:
+			var before := garden.problem()
+			var plants := garden.plants()
+			garden.scrape(plants[Parts.to_scrape(plants)], Parts.sessions(plants))
+			garden_change = Garden.Change.RESET
+			var scraped: Array[int] = [Event.BREAK, Event.GARDEN]
+			if garden.problem() != before:
+				scraped.append(Event.GARDEN_PROBLEM)
+			return scraped
 		BreakStep.COLLECT:
 			_collected = Parts.made(garden.plants())
 			return [Event.BREAK]

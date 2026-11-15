@@ -35,6 +35,9 @@ const SHIP_ORIGIN := Vector3(40, 92, 330)
 # Light comes in through the doors, from the sun low on the left.
 
 const BRASS := Color(0.80, 0.58, 0.26)
+const RUST := Color(0.55, 0.30, 0.18)
+## In the garden's list, a rusted plant is this and up (see rusted()).
+const RUSTED := 1000
 const COPPER := Color(0.74, 0.42, 0.25)
 const ALLOY := Color(0.70, 0.72, 0.74)
 const CANVAS := Color(0.88, 0.83, 0.70)
@@ -48,7 +51,8 @@ var built := 0.0
 var daylight: Daylight
 ## The weather outside: cloud, rain, fog and snow.
 var conditions := Weather.Conditions.new()
-## The kinds (Parts.Kind) of the built plants in the garden, oldest first.
+## The garden's plants, oldest first: the kind (Parts.Kind) of each that
+## stands, and rusted() for each left to rust.
 var garden_plants: Array[int] = []
 ## While the arm works, rain and snow are drawn moving (scene/falling.gd)
 ## instead of still here.
@@ -124,7 +128,7 @@ func _ready() -> void:
 
 
 ## Shows the light and weather, how far the airship is built, and the
-## plants that stand in the garden. Draws again only for these, and says whether
+## garden's plants, those that stand and those left to rust. Draws again only for these, and says whether
 ## it will (the window keeps the hangar as a picture, remade only then).
 func show_world(daylight_: Daylight, conditions_: Weather.Conditions, built_: float, garden_plants_: Array[int], moving := false) -> bool:
 	moving_weather = moving
@@ -590,7 +594,7 @@ func _draw_garden() -> void:
 	var soil := Color(0.30, 0.22, 0.15)
 	_flat([Vector3(-118, 0.3, DOOR_Z + 24), Vector3(-118, 0.3, DOOR_Z + 76),
 			Vector3(-22, 0.3, DOOR_Z + 76), Vector3(-22, 0.3, DOOR_Z + 24)], soil)
-	# Eight places, each plant in the next one round: once the plot is full
+	# Eight places, each plant (rusted ones too) in the next one round: once the plot is full
 	# a new plant takes the oldest one's place, and the rest stay put.
 	var places := 8
 	var standing: Array[int] = []
@@ -606,44 +610,63 @@ func _draw_garden() -> void:
 			_draw_plant(Vector3(-110.0 + (place % 4) * 24.0 + (12.0 if far else 0.0), 0, DOOR_Z + (64.0 if far else 34.0)), standing[place])
 
 
-func _draw_plant(base: Vector3, kind: int) -> void:
-	var stem_top := base + Vector3(0, 15, 0)
-	var stem := Color(0.55, 0.40, 0.18)
+## A rusted plant of `kind` that seized at `progress`, as the garden's list
+## shows it (a plant that stands is just its kind).
+static func rusted(kind: int, progress: float) -> int:
+	return RUSTED + kind * 100 + roundi(clampf(progress, 0.0, 1.0) * 99.0)
+
+
+func _draw_plant(base: Vector3, plant: int) -> void:
+	var kind := plant
+	var rust := -1.0
+	if plant >= RUSTED:
+		kind = (plant - RUSTED) / 100
+		rust = ((plant - RUSTED) % 100) / 99.0
+	# A plant left to rust stands as far as it was built, all in rust.
+	var grown := 1.0 if rust < 0.0 else lerpf(0.45, 1.0, rust)
+	var brass := BRASS if rust < 0.0 else RUST
+	var copper := COPPER if rust < 0.0 else RUST.darkened(0.15)
+	var alloy := ALLOY if rust < 0.0 else RUST.lightened(0.1)
+	var canvas := CANVAS if rust < 0.0 else RUST.lerp(CANVAS, 0.25)
+	var stem_top := base + Vector3(0, 15 * grown, 0)
+	var stem := Color(0.55, 0.40, 0.18) if rust < 0.0 else RUST.darkened(0.3)
+	# Rust doesn't shine.
+	var shine := Color(1, 1, 1, 0.5 if rust < 0.0 else 0.0)
 	_beam(base, stem_top, 0.8, stem, Color(0, 0, 0, 0))
 	var c := _to_cam(stem_top)
 	if c.z < NEAR:
 		return
 	var at := _project(c)
-	var px := _focal / c.z
+	var px := _focal / c.z * grown
 	match kind:
 		0:  # gear-flower
-			_gear(at, 6.0 * px, 10, BRASS)
+			_gear(at, 6.0 * px, 10, brass)
 			_disc(at, 2.0 * px, Color(0.45, 0.30, 0.12))
 		1:  # pipe-vine: copper tubes curling up
 			for k in 3:
 				var off := Vector2((k - 1) * 2.4, 0) * px
-				_beam(base + Vector3((k - 1) * 2.0, 0, 0), stem_top + Vector3((k - 1) * 3.0, 2.0 - absf(k - 1) * 3.0, 0),
-					0.9, COPPER, Color(1, 0.8, 0.6, 0.5))
+				_beam(base + Vector3((k - 1) * 2.0, 0, 0) * grown, stem_top + Vector3((k - 1) * 3.0, 2.0 - absf(k - 1) * 3.0, 0) * grown,
+					0.9 * grown, copper, Color(1, 0.8, 0.6, shine.a))
 				_disc(at + off + Vector2(0, -(2.0 - absf(k - 1) * 3.0) * px), 0.9 * px, Color(0.55, 0.30, 0.18))
 		2:  # girder-reed: light metal lattice stalks
 			for k in 3:
-				var top := base + Vector3((k - 1) * 3.0, 20.0 - absf(k - 1) * 5.0, 0)
-				_girder(base + Vector3((k - 1) * 1.2, 0, 0), top, 1.6, ALLOY, Color(1, 1, 1, 0.5))
+				var top := base + Vector3((k - 1) * 3.0, 20.0 - absf(k - 1) * 5.0, 0) * grown
+				_girder(base + Vector3((k - 1) * 1.2, 0, 0) * grown, top, 1.6 * grown, alloy, shine)
 				var tc := _to_cam(top)
 				if tc.z > NEAR:
-					_disc(_project(tc), 1.0 * _focal / tc.z, BRASS)
+					_disc(_project(tc), 1.0 * _focal / tc.z * grown, brass)
 		3:  # sail-cotton: bolls of cloth for the envelope
 			for k in 5:
 				var ang := deg_to_rad(-160.0 + k * 35.0)
 				var tip := at + Vector2(cos(ang), sin(ang)) * 6.0 * px
-				_strip(at, tip, 0.35 * px, 0.25 * px, Color(0.55, 0.40, 0.18))
-				_disc(tip, 2.4 * px, CANVAS.darkened(0.12))
-				_disc(tip + Vector2(-0.5, -0.6) * px, 1.7 * px, CANVAS.lightened(0.1))
+				_strip(at, tip, 0.35 * px, 0.25 * px, stem)
+				_disc(tip, 2.4 * px, canvas.darkened(0.12))
+				_disc(tip + Vector2(-0.5, -0.6) * px, 1.7 * px, canvas.lightened(0.1))
 		_:  # kettle-gourd: ripens into a boiler drum
 			var body := at + Vector2(0, 3.0 * px)
-			_disc(body, 5.5 * px, COPPER.darkened(0.15))
-			_disc(body + Vector2(-1.4, -1.6) * px, 3.2 * px, COPPER.lightened(0.15))
-			_strip(body + Vector2(0, -5.5) * px, body + Vector2(0, -8.0) * px, 0.8 * px, 0.6 * px, BRASS.darkened(0.2))
+			_disc(body, 5.5 * px, copper.darkened(0.15))
+			_disc(body + Vector2(-1.4, -1.6) * px, 3.2 * px, copper.lightened(0.15))
+			_strip(body + Vector2(0, -5.5) * px, body + Vector2(0, -8.0) * px, 0.8 * px, 0.6 * px, brass.darkened(0.2))
 
 
 func _gear(centre: Vector2, radius: float, teeth: int, colour: Color) -> void:

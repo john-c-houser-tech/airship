@@ -43,6 +43,8 @@ func next_step() -> String:
 		App.BreakStep.PLANT:
 			var plant := catalog.translate(Parts.PLANT_NAMES[new_plant])
 			return catalog.translate("Built. Click the garden through the door, or press Enter, to plant your new %s.") % plant
+		App.BreakStep.SCRAPE:
+			return catalog.translate("A plant in the garden has seized with rust. Click the garden, or press Enter, to scrape it clean.")
 		App.BreakStep.COLLECT:
 			return catalog.translate("Your plants have made parts. Click the garden, or press Enter, to collect them.")
 		App.BreakStep.FIT:

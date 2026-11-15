@@ -92,3 +92,50 @@ func test_parts_wait_until_they_are_fitted() -> void:
 	same(Parts.waiting([99, 0, 0, 0, 9] as Array[int], [0, 0, 0, 0, 0] as Array[int]), [12, 0, 0, 0, 2] as Array[int], "no more than the ship needs")
 	same(Parts.waiting([1, 0, 0, 0, 0] as Array[int], [5, 0, 0, 0, 0] as Array[int]), [0, 0, 0, 0, 0] as Array[int], "never less than none")
 	same(Parts.airship_built([0, 0, 7] as Array[int]), 7.0 / 70.0, "a short list of fitted parts counts too")
+
+
+func test_each_completed_session_earns_one_scrape_of_the_oldest_rust() -> void:
+	same(Parts.to_scrape(_garden([-3])), -1, "no session completed since it rusted")
+	same(Parts.to_scrape(_garden([2, -3])), -1, "a session before the rust doesn't count")
+	same(Parts.to_scrape(_garden([-3, 2])), 1, "a session completed since: scrape it")
+	same(Parts.to_scrape(_garden([-3, -4, 2])), 2, "the oldest first")
+	var plants := _garden([-3, -4, 2])
+	plants[2].scraped = 1
+	same(Parts.to_scrape(plants), -1, "one session, one scrape: the other waits")
+	plants = _garden([-3, -4, 2, 2])
+	plants[3].scraped = 1
+	same(Parts.to_scrape(plants), 2, "the next session earns the next")
+	same(Parts.to_scrape(_garden([2, 2])), -1, "nothing rusted")
+	plants = _garden([2, -3, -4, 2])
+	same(Parts.to_scrape(plants), 2, "one session since the rust: the older of the two")
+	plants[2].scraped = 2
+	same(Parts.to_scrape(plants), -1, "and only one: the session from before the rust earns nothing")
+	plants = _garden([2, 2, 2, -3, 2])
+	same(Parts.to_scrape(plants), 1, "three old sessions and one since: one scrape")
+	plants[1].scraped = 4
+	plants = _garden([2, 2, 2, -3, 2, -4])
+	plants[2].scraped = 4
+	same(Parts.to_scrape(plants), -1, "a second rust waits for its own later session")
+	plants = _garden([-3, -4, 2, 2])
+	same(Parts.to_scrape(plants), 3, "two sessions since, breaks skipped")
+	plants[3].scraped = 2
+	same(Parts.to_scrape(plants), 2, "the skipped scrape waited: both in one break")
+	var gourd := _garden([-5, 2, 2, 2, 2, 2, 2])
+	gourd[6].scraped = 1
+	same(Parts.made(gourd)[Parts.Kind.KETTLE_GOURD], 1, "a scraped kettle-gourd ripens every fifth session since")
+	gourd[6].scraped = 9
+	same(Parts.made(gourd)[Parts.Kind.KETTLE_GOURD], 0, "a mark past the sessions there are makes nothing")
+
+
+func test_a_scraped_plant_works_from_then_on() -> void:
+	var plants := _garden([-4, 2, 2, 2])
+	same(Parts.made(plants), [0, 0, 3, 0, 0] as Array[int], "rusted: only the reeds make parts")
+	same(Parts.standing(plants), [0, 0, 3, 0, 0] as Array[int], "and only they stand")
+	# Scraped after the first of the three sessions.
+	plants[3].scraped = 1
+	check(Parts.stands(plants[3]), "it stands again")
+	same(Parts.standing(plants), [0, 0, 3, 1, 0] as Array[int], "counted with the rest")
+	same(Parts.made(plants), [0, 0, 3, 2, 0] as Array[int], "a part for each session since, none for those before")
+	plants[3].scraped = 3
+	same(Parts.made(plants)[Parts.Kind.SAIL_COTTON], 0, "just scraped: nothing yet")
+	same(Parts.sessions(plants), 3, "a scraped plant is no session")

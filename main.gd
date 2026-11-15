@@ -233,7 +233,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		# airship everything inside the hangar.
 		var through_door := Geometry2D.is_point_in_polygon(click.position, _hangar.door_outline())
 		var step := app.break_step()
-		var wants_garden := step == App.BreakStep.PLANT or step == App.BreakStep.COLLECT
+		var wants_garden := step != App.BreakStep.FIT
 		if step != App.BreakStep.NONE and through_door == wants_garden:
 			_heard(app.take_break_step())
 		return
@@ -339,11 +339,12 @@ func _show_everything() -> void:
 ## The hangar and what's seen through its door: drawn again only when the
 ## light, the weather or the garden (and so the airship) changes.
 func _show_sky() -> void:
-	# The built plants' kinds, oldest first.
+	# The garden's plants, oldest first: the kinds of those that stand, and
+	# the rusted ones as they seized.
 	var plants: Array[int] = []
 	for plant: Garden.Plant in app.garden.plants():
-		if plant.outcome == Garden.Outcome.BUILT:
-			plants.append(Parts.kind_of(plant.blueprint))
+		var kind := Parts.kind_of(plant.blueprint)
+		plants.append(kind if Parts.stands(plant) else Hangar.rusted(kind, plant.progress))
 	plants.reverse()
 	if not app.planted():
 		# The newest still stands on the planter.

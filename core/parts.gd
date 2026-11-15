@@ -10,7 +10,8 @@ extends RefCounted
 ## for as long as it stands. Only focus moves the game forward: a plant
 ## makes its part each time a later session is completed (a kettle-gourd,
 ## slow to ripen, every fifth), never by the clock. A rusted plant makes
-## nothing, and a session given up ripens nothing.
+## nothing until a later session's break scrapes it clean, and a session
+## given up ripens nothing.
 
 ## The five plants, by blueprint, and the part each makes.
 enum Kind { GEAR_FLOWER, PIPE_VINE, GIRDER_REED, SAIL_COTTON, KETTLE_GOURD }
@@ -33,28 +34,71 @@ static func kind_of(blueprint: int) -> Kind:
 	return posmod(blueprint, KINDS) as Kind
 
 
-## How many plants of each kind stand built, by kind.
+## Whether a plant stands and works: built to the end, or left to rust and
+## scraped clean since.
+static func stands(plant: Garden.Plant) -> bool:
+	return plant.outcome == Garden.Outcome.BUILT or plant.scraped >= 0
+
+
+## How many plants of each kind stand and work, by kind.
 static func standing(plants: Array[Garden.Plant]) -> Array[int]:
 	var counts := _none()
 	for plant: Garden.Plant in plants:
-		if plant.outcome == Garden.Outcome.BUILT:
+		if stands(plant):
 			counts[kind_of(plant.blueprint)] += 1
 	return counts
 
 
+## How many sessions were completed: the plants built to the end.
+static func sessions(plants: Array[Garden.Plant]) -> int:
+	var built := 0
+	for plant: Garden.Plant in plants:
+		if plant.outcome == Garden.Outcome.BUILT:
+			built += 1
+	return built
+
+
 ## The parts the garden has made so far, by kind. `plants` is newest first,
 ## as the garden keeps them: each built plant has made a part for every
-## so-many sessions completed since it was built.
+## so-many sessions completed since it was built, and a scraped one for
+## those completed since its rust came off.
 static func made(plants: Array[Garden.Plant]) -> Array[int]:
 	var parts := _none()
+	var completed := sessions(plants)
 	var later := 0
 	for plant: Garden.Plant in plants:
-		if plant.outcome != Garden.Outcome.BUILT:
-			continue
 		var kind := kind_of(plant.blueprint)
-		parts[kind] += later / SESSIONS_A_PART[kind]
-		later += 1
+		if plant.outcome == Garden.Outcome.BUILT:
+			parts[kind] += later / SESSIONS_A_PART[kind]
+			later += 1
+		elif plant.scraped >= 0:
+			parts[kind] += maxi(completed - plant.scraped, 0) / SESSIONS_A_PART[kind]
 	return parts
+
+
+## The rusted plant to scrape clean next, as its place in `plants`, or -1.
+## Each session completed after a plant rusted earns one scrape, of the
+## oldest plant still seized; sessions from before the rust earn none, and
+## a scrape not taken waits (a skipped break loses nothing).
+static func to_scrape(plants: Array[Garden.Plant]) -> int:
+	var completed := sessions(plants)
+	# Built plants older than the one looked at, counted from the oldest.
+	var older := 0
+	for k in range(plants.size() - 1, -1, -1):
+		var plant := plants[k]
+		if plant.outcome == Garden.Outcome.BUILT:
+			older += 1
+			continue
+		if plant.scraped >= 0:
+			continue
+		# The sessions since it rusted, less the scrapes they already paid
+		# for (a scrape's mark is the sessions completed by then).
+		var spent := 0
+		for other: Garden.Plant in plants:
+			if other.scraped > older:
+				spent += 1
+		return k if completed - older - spent > 0 else -1
+	return -1
 
 
 ## The parts ready for the airship: those made, as many as the ship needs,
