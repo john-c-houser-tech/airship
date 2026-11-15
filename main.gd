@@ -99,6 +99,7 @@ func _ready() -> void:
 	_plain_title.call_deferred()
 	var options := Options.from_environment()
 	var build := -1
+	var plant := 0
 	var give_up := false
 	var log_words := false
 	for arg: String in OS.get_cmdline_user_args():
@@ -106,6 +107,9 @@ func _ready() -> void:
 			_shot_path = arg.trim_prefix("--shot=")
 		elif arg == "--check":
 			_check = true
+		elif arg.begins_with("--plant="):
+			# Which blueprint a picture's session builds (with --build).
+			plant = arg.trim_prefix("--plant=").to_int()
 		elif arg.begins_with("--build="):
 			build = arg.trim_prefix("--build=").to_int()
 		elif arg == "--give-up":
@@ -156,7 +160,7 @@ func _ready() -> void:
 	_workshop.time_scale = app.session.seconds() / Workshop.BuildPlan.SESSION
 	_hud.notices_work = notifier.working
 	if build >= 0:
-		app.start(0, 12345)
+		app.start(plant, 12345)
 		app.advance(build * 1000)
 		if give_up:
 			app.give_up()
@@ -231,12 +235,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key.keycode == KEY_M:
 		_heard(app.set_muted(not app.muted))
 		return
+	if key.keycode == KEY_LEFT or key.keycode == KEY_RIGHT:
+		_heard(app.choose(-1 if key.keycode == KEY_LEFT else 1))
+		return
 	if key.keycode != KEY_SPACE:
 		return
 	if app.session.state() == Session.State.BUILDING:
 		_heard(app.give_up())
 	else:
-		_heard(app.start(app.next_blueprint(), randi_range(1, Session.SEED_LIMIT)))
+		_heard(app.start(app.blueprint(), randi_range(1, Session.SEED_LIMIT)))
 	_pace()
 
 
@@ -248,12 +255,20 @@ func _heard(events: Array[int]) -> void:
 				if event == App.Event.STATE:
 					# Rain and snow move while the arm works, and are still otherwise.
 					_show_sky()
+				_workshop.show_blueprint(app.session.blueprint())
 				_workshop.show_session(app.session.state(), app.session.progress())
 				_hud.state = app.session.state()
 				_hud.remaining = app.session.remaining()
 				_hud.queue_redraw()
 			App.Event.WEATHER, App.Event.LIGHT, App.Event.GARDEN:
 				_show_sky()
+				if event == App.Event.GARDEN:
+					# A new plant changes which one the ship needs next.
+					_hud.next_plant = Parts.kind_of(app.blueprint())
+					_hud.queue_redraw()
+			App.Event.BLUEPRINT:
+				_hud.next_plant = Parts.kind_of(app.blueprint())
+				_hud.queue_redraw()
 			App.Event.GARDEN_PROBLEM:
 				_hud.garden_problem = app.garden.problem()
 				_hud.save_error = app.garden.save_error
@@ -289,7 +304,7 @@ func _heard(events: Array[int]) -> void:
 
 
 func _show_everything() -> void:
-	_heard([App.Event.STATE, App.Event.GARDEN_PROBLEM, App.Event.LANGUAGE])
+	_heard([App.Event.STATE, App.Event.BLUEPRINT, App.Event.GARDEN_PROBLEM, App.Event.LANGUAGE])
 	_hud.muted = app.muted
 	_show_sky()
 	_pace()
@@ -298,7 +313,12 @@ func _show_everything() -> void:
 ## The hangar and what's seen through its door: drawn again only when the
 ## light, the weather or the garden (and so the airship) changes.
 func _show_sky() -> void:
-	var plants := app.garden.built()
+	# The built plants' kinds, oldest first.
+	var plants: Array[int] = []
+	for plant: Garden.Plant in app.garden.plants():
+		if plant.outcome == Garden.Outcome.BUILT:
+			plants.append(Parts.kind_of(plant.blueprint))
+	plants.reverse()
 	var moving := app.session.state() == Session.State.BUILDING
 	var now := app.weather.now()
 	_falling.show_weather(now.rain, now.snow, moving, 0.35 + 0.65 * app.daylight.ambient)

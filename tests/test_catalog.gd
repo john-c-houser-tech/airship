@@ -5,9 +5,11 @@ extends TestCase
 
 const LANGUAGES: Array[String] = ["da", "de", "es-MX", "fr", "ja", "pt-BR"]
 # Calls that pass something other than a written-out string, each checked
-# some other way: the garden's reasons are Garden.REASONS, and say() is the
+# some other way: the garden's reasons are Garden.REASONS, the plants and
+# their parts are Parts.PLANT_NAMES and PART_NAMES, and say() is the
 # app's own way in to the catalog.
-const PASSED_ON: Array[String] = ["catalog.translate(save_error)", "catalog.translate(source)"]
+const PASSED_ON: Array[String] = ["catalog.translate(save_error)", "catalog.translate(source)",
+	"catalog.translate(Parts.PLANT_NAMES[next_plant])", "catalog.translate(Parts.PART_NAMES[next_plant])"]
 # Folders that aren't Airship's own code.
 const NOT_SCANNED: Array[String] = ["res://tests", "res://prototypes", "res://.godot", "res://build", "res://i18n"]
 
@@ -29,6 +31,8 @@ func _folder(name: String, files: Dictionary) -> String:
 func _said_in_code() -> Array[String]:
 	var found: Array[String] = []
 	found.append_array(Garden.REASONS)
+	found.append_array(Parts.PLANT_NAMES)
+	found.append_array(Parts.PART_NAMES)
 	var literal := RegEx.create_from_string("(?:translate|say)\\(\\s*\"((?:[^\"\\\\]|\\\\.)*)\"\\s*\\)")
 	var any_call := RegEx.create_from_string("[\\w.]*(?:translate|say)\\([^\\n]*")
 	for path: String in _scripts("res://"):

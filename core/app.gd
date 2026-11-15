@@ -31,6 +31,9 @@ enum Event {
 	SOUNDS_ENDED,
 	## The sounds were muted or unmuted.
 	MUTED,
+	## Another plant was chosen to build next: `blueprint()` says which.
+	## (A plant built to the end changes it too, with GARDEN.)
+	BLUEPRINT,
 }
 
 ## The desktop's accent until the theme says otherwise (4d), as in Grove.
@@ -52,6 +55,9 @@ var _sound_plan: Sounds.Plan
 var accent := DEFAULT_ACCENT
 ## How the garden's plants last changed.
 var garden_change := Garden.Change.RESET
+# The blueprint chosen for the next session, or -1 for the one most needed.
+# A plant built to the end clears it: the garden's needs have moved on.
+var _chosen := -1
 ## Local time as YYYY-MM-DDTHH:MM:SS: when a plant was finished, and, unless
 ## AIRSHIP_DATE or AIRSHIP_TIME pin them, the season and the light. Tests
 ## replace it.
@@ -129,6 +135,24 @@ func airship_progress() -> float:
 ## the airship is shortest of.
 func next_blueprint() -> int:
 	return Parts.most_needed(garden.plants())
+
+
+## The blueprint the next session builds: the one chosen, or the one most
+## needed until someone chooses.
+func blueprint() -> int:
+	if _chosen in Parts.unlocked(airship_progress()):
+		return _chosen
+	return next_blueprint()
+
+
+## Chooses the next (`step` 1) or the one before (-1) of the unlocked
+## blueprints, round and round. Not while the arm is building.
+func choose(step: int) -> Array[int]:
+	if session.state() == Session.State.BUILDING:
+		return []
+	var open := Parts.unlocked(airship_progress())
+	_chosen = open[posmod(open.find(blueprint()) + step, open.size())]
+	return [Event.BLUEPRINT]
 
 
 ## How loud a sound is played, 0 to 1.
@@ -209,6 +233,7 @@ func _record() -> Array[int]:
 	var events: Array[int] = [Event.GARDEN]
 	if built:
 		events.append(Event.PLANT_BUILT)
+		_chosen = -1
 	if garden.problem() != problem_before:
 		events.append(Event.GARDEN_PROBLEM)
 	return events

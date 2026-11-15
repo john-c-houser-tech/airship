@@ -48,8 +48,8 @@ var built := 0.0
 var daylight: Daylight
 ## The weather outside: cloud, rain, fog and snow.
 var conditions := Weather.Conditions.new()
-## How many finished plants stand in the garden outside (up to six show).
-var garden_plants := 0
+## The kinds (Parts.Kind) of the built plants in the garden, oldest first.
+var garden_plants: Array[int] = []
 ## While the arm works, rain and snow are drawn moving (scene/falling.gd)
 ## instead of still here.
 var moving_weather := false
@@ -123,10 +123,10 @@ func _ready() -> void:
 	_plan_build()
 
 
-## Shows the light and weather, how far the airship is built, and how many
-## plants stand in the garden. Draws again only for these, and says whether
+## Shows the light and weather, how far the airship is built, and the
+## plants that stand in the garden. Draws again only for these, and says whether
 ## it will (the window keeps the hangar as a picture, remade only then).
-func show_world(daylight_: Daylight, conditions_: Weather.Conditions, built_: float, garden_plants_: int, moving := false) -> bool:
+func show_world(daylight_: Daylight, conditions_: Weather.Conditions, built_: float, garden_plants_: Array[int], moving := false) -> bool:
 	moving_weather = moving
 	daylight = daylight_
 	conditions = conditions_
@@ -149,10 +149,10 @@ var _shown := ""
 
 func _what_shows() -> String:
 	var steps := func(v: float, n: float) -> int: return roundi(v * n)
-	return "%d %d %d %d %d %d %d %d %d %s %s" % [steps.call(_day, 40.0), steps.call(_sun, 20.0),
+	return "%d %d %d %d %d %d %d %d %s %s %s" % [steps.call(_day, 40.0), steps.call(_sun, 20.0),
 		steps.call(daylight.stars, 10.0), steps.call(daylight.warmth, 20.0),
 		steps.call(conditions.cloud, 40.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
-		steps.call(conditions.snow, 10.0), garden_plants, daylight.top.to_html(false).left(5), str(built)] \
+		steps.call(conditions.snow, 10.0), str(garden_plants), daylight.top.to_html(false).left(5), str(built)] \
 		+ " %d %d %s" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather)]
 
 
@@ -580,15 +580,20 @@ func _draw_garden() -> void:
 	var soil := Color(0.30, 0.22, 0.15)
 	_flat([Vector3(-118, 0.3, DOOR_Z + 24), Vector3(-118, 0.3, DOOR_Z + 76),
 			Vector3(-22, 0.3, DOOR_Z + 76), Vector3(-22, 0.3, DOOR_Z + 24)], soil)
-	var count := mini(garden_plants, 6)
-	var spots: Array[Vector3] = [
-		Vector3(-102, 0, DOOR_Z + 36), Vector3(-70, 0, DOOR_Z + 36), Vector3(-38, 0, DOOR_Z + 36),
-		Vector3(-102, 0, DOOR_Z + 62), Vector3(-70, 0, DOOR_Z + 62), Vector3(-38, 0, DOOR_Z + 62),
-	]
+	# Eight places, each plant in the next one round: once the plot is full
+	# a new plant takes the oldest one's place, and the rest stay put.
+	var places := 8
+	var standing: Array[int] = []
+	standing.resize(places)
+	standing.fill(-1)
+	for k in garden_plants.size():
+		standing[k % places] = garden_plants[k]
 	# Far row first, so the near row stands in front.
-	for k: int in [3, 4, 5, 0, 1, 2]:
-		if k < count:
-			_draw_plant(spots[k], ([0, 2, 1, 3, 4, 3] as Array)[k] as int)
+	for place: int in [4, 5, 6, 7, 0, 1, 2, 3]:
+		if standing[place] >= 0:
+			# The far row stands in the gaps of the near one.
+			var far := place >= 4
+			_draw_plant(Vector3(-110.0 + (place % 4) * 24.0 + (12.0 if far else 0.0), 0, DOOR_Z + (64.0 if far else 34.0)), standing[place])
 
 
 func _draw_plant(base: Vector3, kind: int) -> void:

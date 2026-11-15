@@ -67,16 +67,32 @@ static func airship_built(parts: Array[int]) -> float:
 	return float(fitted) / whole
 
 
-## The plant the airship most needs next: the kind whose missing parts would
-## take the longest for the plants already standing, and one more, to make.
-## A rough guide for when nobody chooses (it plants more kettle-gourds than
-## the drums need). Once the ship has every part, a gear-flower.
+## The blueprints to hand, which unlock as the airship grows: the frame's
+## girder-reed and the envelope's sail-cotton from the start, the
+## gear-flower and the pipe-vine once the first part is on the ship, and
+## the kettle-gourd when a tenth of it is built.
+static func unlocked(airship: float) -> Array[int]:
+	var kinds: Array[int] = [Kind.GIRDER_REED, Kind.SAIL_COTTON]
+	if airship > 0.0:
+		kinds.append_array([Kind.GEAR_FLOWER, Kind.PIPE_VINE])
+	if airship >= 0.1:
+		kinds.append(Kind.KETTLE_GOURD)
+	kinds.sort()
+	return kinds
+
+
+## The plant the airship most needs next, of those unlocked: the kind whose
+## missing parts would take the longest for the plants already standing,
+## and one more, to make. A rough guide for when nobody chooses (it plants
+## more kettle-gourds than the drums need). Once the ship has every part,
+## a gear-flower.
 static func most_needed(plants: Array[Garden.Plant]) -> Kind:
 	var parts := made(plants)
 	var counts := standing(plants)
-	var best := Kind.GEAR_FLOWER
+	var open := unlocked(airship_built(parts))
+	var best := open[0] as Kind
 	var longest := -1.0
-	for kind in KINDS:
+	for kind: int in open:
 		var missing := maxi(NEEDED[kind] - parts[kind], 0)
 		var sessions := float(missing * SESSIONS_A_PART[kind]) / (counts[kind] + 1)
 		if sessions > longest:
