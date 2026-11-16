@@ -12,6 +12,7 @@
   "Sounds are off. Press M to turn them on.": "音はオフです。Mを押すとオンになります。",
   "The airship is finished! Press L to launch it over the pass. It won't come back: a new valley begins.": "飛行船が完成しました！L キーを押すと峠の向こうへ飛び立ちます。飛行船は戻りません。新しい谷が始まります。",
   "The arm has finished. Take a five-minute break.": "アームの作業が終わりました。5分休みましょう。",
+  "The night train offers a trade: it takes three parts your garden can best spare (%s) and brings one it is slowest to make (%s). To trade, click through the door or press T; or leave it and carry on.": "夜行列車が交換を持ちかけています。庭で余裕のある部品を3つ（%s）引き取り、作るのにいちばん時間のかかる部品を1つ（%s）届けます。交換するなら扉の向こうをクリックするか T キーを押しましょう。そのまま先へ進んでもかまいません。",
   "There's no folder to keep your garden in, so plants aren't being saved.": "庭を保存するフォルダーがないため、植物は保存されていません。",
   "You have parts for the airship. Click the airship, or press Enter, to fit them.": "飛行船の部品があります。飛行船をクリックするか Enter キーを押して取り付けましょう。",
   "Your garden couldn't be saved: %s. It will try again with the next plant.": "庭を保存できませんでした：%s。次の植物でもう一度試します。",

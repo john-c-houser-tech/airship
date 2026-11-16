@@ -139,3 +139,70 @@ func test_a_scraped_plant_works_from_then_on() -> void:
 	plants[3].scraped = 3
 	same(Parts.made(plants)[Parts.Kind.SAIL_COTTON], 0, "just scraped: nothing yet")
 	same(Parts.sessions(plants), 3, "a scraped plant is no session")
+
+
+func _flowers(n: int) -> Array[Garden.Plant]:
+	var blueprints: Array[int] = []
+	blueprints.resize(n)
+	blueprints.fill(Parts.Kind.GEAR_FLOWER)
+	return _garden(blueprints)
+
+
+func test_parts_to_hand_count_the_trades() -> void:
+	same(Parts.have([15, 0, 2, 0, 0] as Array[int], [3] as Array[int], [0, 0, 1] as Array[int]),
+		[12, 0, 3, 0, 0] as Array[int], "less the spares given, and the part brought")
+	same(Parts.have([1, 0, 0, 0, 0] as Array[int], [3] as Array[int], [] as Array[int]),
+		[0, 0, 0, 0, 0] as Array[int], "never below nothing, should the garden have changed")
+
+
+func test_the_night_train_brings_what_the_garden_is_slowest_to_make() -> void:
+	var none: Array[int] = []
+	# Five gear-flowers have made ten cogs, and nothing makes a strut.
+	var offer := Parts.trade(_flowers(5), none, none)
+	check(offer != null, "five sessions: a trade")
+	same(offer.gives, Parts.Kind.GEAR_FLOWER, "it takes cogs, which the garden makes fast")
+	same(offer.brings, Parts.Kind.GIRDER_REED, "and brings a strut: 24 to make and no plant for them")
+	check(Parts.trade(_flowers(7), [3] as Array[int], [0, 0, 1] as Array[int]) == null, "one trade for five sessions")
+	check(Parts.trade(_flowers(10), [3] as Array[int], [0, 0, 1] as Array[int]) != null, "ten sessions earn a second")
+	check(Parts.trade(_flowers(10), none, none) != null, "a trade not taken waits")
+
+
+func test_the_night_train_takes_what_the_garden_can_best_spare() -> void:
+	var none: Array[int] = []
+	# One flower and vine, three reeds and cottons, two gourds: 5 cogs,
+	# 4 tubing, 19 struts, 16 cloth, no drum yet.
+	var mixed := _garden([2, 3, 2, 3, 0, 1, 2, 3, 4, 4] as Array[int])
+	same(Parts.made(mixed), [5, 4, 19, 16, 0] as Array[int], "the garden")
+	var offer := Parts.trade(mixed, none, none)
+	same(offer.brings, Parts.Kind.PIPE_VINE, "tubing: eight to go from one vine is the longest wait, longer than the gourds' drums")
+	same(offer.gives, Parts.Kind.SAIL_COTTON, "cloth is nearest done; struts and cloth are as fast, and it isn't the lower number that decides")
+	# Six flowers and six reeds: 51 cogs, far more than the ship needs.
+	var spares := _garden([0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2] as Array[int])
+	same(Parts.trade(spares, none, none).gives, Parts.Kind.GEAR_FLOWER, "spares go first, though the reeds are as fast")
+	same(Parts.trade(mixed, none, none, [0, 8, 0, 0, 0] as Array[int]).brings, Parts.Kind.PIPE_VINE, "a kind the ship still has room for")
+	check(Parts.trade(mixed, none, none, [0, 12, 0, 0, 0] as Array[int]).brings != Parts.Kind.PIPE_VINE, "never one the ship is full of")
+
+
+func test_no_trade_without_sessions_parts_or_gain() -> void:
+	var none: Array[int] = []
+	check(Parts.trade(_flowers(4), none, none) == null, "four sessions earn none")
+	check(Parts.trade(_flowers(5), [8] as Array[int], none) == null, "fewer than three cogs left to give")
+	# Four of each common plant, and both drums brought: nothing is missing.
+	var even: Array[int] = []
+	for k in 16:
+		even.append(k % 4)
+	check(Parts.trade(_garden(even), [6] as Array[int], [0, 0, 0, 0, 2] as Array[int]) == null, "a ship with every part needs no trade")
+	# Three reeds and three flowers, the rest of the ship fitted: 12 struts
+	# to go and 9 cogs. Three cogs for a strut would leave the cogs the
+	# last to be done, no sooner than the struts are now.
+	var rest: Array[int] = [0, 12, 0, 20, 2]
+	check(Parts.trade(_garden([2, 2, 2, 0, 0, 0] as Array[int]), none, none, rest) == null, "a trade that wouldn't help isn't offered")
+	# A garden of rusted plants made nothing and completed nothing.
+	check(Parts.trade(_garden([-1, -1, -1, -1, -1, -1] as Array[int]), none, none) == null, "nothing made, nothing to trade")
+
+
+func test_the_plant_most_needed_counts_what_the_train_brought() -> void:
+	var garden := _garden([2, 3, 0, 1, 2, 3] as Array[int])
+	var open: Array[int] = [0, 1, 2, 3, 4]
+	same(Parts.most_needed(garden, open), Parts.Kind.KETTLE_GOURD, "no drums and no gourd: a gourd")
+	check(Parts.most_needed(garden, open, [] as Array[int], [0, 0, 0, 0, 2] as Array[int]) != Parts.Kind.KETTLE_GOURD, "both drums brought: no gourd needed")

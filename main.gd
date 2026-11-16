@@ -257,8 +257,9 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	var click := event as InputEventMouseButton
 	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
-		# The break's steps: the garden is what shows through the door, the
-		# airship everything inside the hangar.
+		# The break's steps: the garden, and the railway the night train
+		# trades from, are what shows through the door, the airship
+		# everything inside the hangar.
 		var through_door := Geometry2D.is_point_in_polygon(click.position, _hangar.door_outline())
 		var step := app.break_step()
 		var wants_garden := step != App.BreakStep.FIT
@@ -274,9 +275,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		_heard(app.set_muted(not app.muted))
 		return
 	# The launch can't be undone, so it has a key of its own: neither the
-	# Enter nor the click that fitted the last parts sets it off.
-	var launch := app.break_step() == App.BreakStep.LAUNCH
-	if (key.keycode == KEY_L and launch) or ((key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER) and not launch):
+	# Enter nor the click that fitted the last parts sets it off. Nor can a
+	# trade, which has T (or a click through the door, away from the
+	# airship just clicked).
+	var step := app.break_step()
+	var own_key := KEY_L if step == App.BreakStep.LAUNCH else KEY_T if step == App.BreakStep.TRADE else KEY_NONE
+	if (own_key != KEY_NONE and key.keycode == own_key) or ((key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER) and own_key == KEY_NONE):
 		_heard(app.take_break_step())
 		return
 	if key.keycode == KEY_LEFT or key.keycode == KEY_RIGHT:
@@ -368,6 +372,10 @@ func _heard(events: Array[int]) -> void:
 func _show_break() -> void:
 	_hud.break_step = app.break_step()
 	_hud.new_plant = Parts.kind_of(app.session.blueprint())
+	var offer := app.trade()
+	if offer != null:
+		_hud.trade_gives = offer.gives
+		_hud.trade_brings = offer.brings
 	_hud.queue_redraw()
 
 
