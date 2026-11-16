@@ -38,7 +38,9 @@ archived), whose rules and tests are the spec for Airship's rules.
   workshop corner stands on the hangar's floor in the left foreground, seen
   through the same camera (`corner_canvas.gd`): `machinery.gd` (boiler,
   planter, parts bin) is drawn when the hangar is, `workshop.gd` (the arm and
-  plant) every frame while the arm works. `hud.gd` holds the words.
+  plant) every frame while the arm works. `hud.gd` holds the words:
+  almost none until H unfurls the help banner (what is happening, the
+  next plant, the commission and the keys that do something now).
 - `core/` holds the rules, which draw nothing and run no timers: `app.gd`
   ties them together and returns events saying what changed;
   `options.gd` is the only reader of the environment (the `AIRSHIP_*`

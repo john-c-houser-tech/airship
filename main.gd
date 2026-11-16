@@ -13,7 +13,9 @@ extends Node2D
 ## --build=SECONDS starts a session that many seconds in; --give-up then gives
 ## it up; --give-up-at=SECONDS and --quit-at=SECONDS do so that long after
 ## start, --log-sounds says when a sound starts and stops, --log-words says
-## the first line shown (bin/test's headless runs), and --log-frames counts
+## the words' main line whenever it changes (bin/test's runs), --press makes
+## keys and clicks at given seconds, --banner has the help banner down,
+## --passing pins a passer-by or the launch at a moment, and --log-frames counts
 ## the frames actually drawn each second (to see what costs CPU). Pictures keep their
 ## plants in a throwaway garden, never the real one. AIRSHIP_DATE,
 ## AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and AIRSHIP_LANGUAGE the
@@ -78,6 +80,12 @@ var _passing_pinned := -1.0
 var _launch_since_ms := -1.0
 var _launch_pinned := -1.0
 const FOCUS_CLICK_MS := 300
+# The help banner: whether H has it open, and how far down it has got, 0
+# to 1 (it moves toward open or shut a little each frame, from wherever
+# it is, so a second press mid-way turns it round without a jump).
+const HELP_UNFURL_MS := 450.0
+var _help_open := false
+var _help_at := 0.0
 # Drawn twice: the part beyond the door, and the part still in the hangar.
 var _ship: Hangar
 var _ship_inside: Hangar
@@ -159,6 +167,10 @@ func _ready() -> void:
 			RenderingServer.frame_post_draw.connect(func() -> void: _frames_drawn += 1)
 		elif arg == "--log-words":
 			log_words = true
+		elif arg == "--banner":
+			# The help banner, all the way down, for pictures.
+			_help_open = true
+			_help_at = 1.0
 		elif arg.begins_with("--press="):
 			for press: String in arg.trim_prefix("--press=").split(","):
 				_presses.append(press.split(":"))
@@ -261,6 +273,7 @@ func _process(delta: float) -> void:
 			print("frames drawn: %d in %.1f s" % [_frames_drawn, _frames_since_ms / 1000.0])
 			_frames_drawn = 0
 			_frames_since_ms = 0.0
+	_show_help(delta)
 	_log_line()
 	while not _presses.is_empty() and _alive_ms >= _presses[0][0].to_float() * 1000.0:
 		_press(_presses.pop_front())
@@ -284,6 +297,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if Time.get_ticks_msec() - _focused_ms < FOCUS_CLICK_MS:
 			# The click that brought the window forward.
 			return
+		if _help_open:
+			# The banner hangs over the door and the airship: a click
+			# rolls it up, and is no step of the break.
+			_help_open = false
+			_pace()
+			return
 		# The break's steps: the garden, and the railway the night train
 		# trades from, are what shows through the door, the airship
 		# everything inside the hangar.
@@ -300,6 +319,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key.keycode == KEY_M:
 		_heard(app.set_muted(not app.muted))
+		return
+	if key.keycode == KEY_H:
+		# The help banner unfurls, or rolls up again.
+		_help_open = not _help_open
+		_pace()
+		return
+	if key.keycode == KEY_ESCAPE and _help_open:
+		_help_open = false
+		_pace()
 		return
 	# The launch can't be undone, so it has a key of its own: neither the
 	# Enter nor the click that fitted the last parts sets it off. Nor can a
@@ -561,6 +589,25 @@ func _show_passing() -> void:
 		_stop_passing()
 
 
+## Moves the help banner on toward open or shut, drawn smoothly while it
+## moves. A frame's step is capped: the first frame after the key comes
+## with the whole idle wait behind it, and would jump.
+func _show_help(delta: float) -> void:
+	var target := 1.0 if _help_open else 0.0
+	if _help_at == target and _hud.unfurled == target:
+		return
+	_help_at = move_toward(_help_at, target, minf(delta, 0.05) * 1000.0 / HELP_UNFURL_MS)
+	_hud.unfurled = _help_at
+	_hud.queue_redraw()
+	if _help_at == target:
+		_pace()
+
+
+## Whether the help banner is on its way down or up.
+func _help_moving() -> bool:
+	return _help_at != (1.0 if _help_open else 0.0)
+
+
 ## Whether the launched airship is still flying out of the valley it leaves.
 func _leaving() -> bool:
 	return _launch_since_ms >= 0.0 and _launch_pinned < 0.0
@@ -616,7 +663,7 @@ func _pace() -> void:
 	var building := app.session.state() == Session.State.BUILDING
 	var raining := building and app.weather.now().rain > FALLING_THRESHOLD
 	var snowing := building and app.weather.now().snow > FALLING_THRESHOLD
-	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0) or (_launch_since_ms >= 0.0 and _launch_pinned < 0.0) or raining:
+	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0) or (_launch_since_ms >= 0.0 and _launch_pinned < 0.0) or raining or _help_moving():
 		Engine.max_fps = WORKING_FPS
 		OS.low_processor_usage_mode_sleep_usec = DEFAULT_SLEEP_USEC
 	elif building:
