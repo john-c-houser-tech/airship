@@ -52,6 +52,9 @@ archived), whose rules and tests are the spec for Airship's rules.
   alone (`Hangar.Painting.SHIP`) every frame while it lasts (30 a second),
   by two layers split at the door: the part still inside over the hangar's
   picture, the part beyond the door under it.
+  Each valley has its own range, hills, grass and cloth, worked out from
+  its number in `hangar.gd` (`valley`, `VALLEYS`, `_roll`); the first is
+  as it always was.
   Blueprints unlock as the airship grows; Left and Right choose the next
   plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.

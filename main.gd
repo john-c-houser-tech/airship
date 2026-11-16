@@ -81,6 +81,8 @@ var _launch_pinned := -1.0
 var _ship: Hangar
 var _ship_inside: Hangar
 var _gold: ColorRect
+# The valley the flying airship is leaving.
+var _launch_valley := 0
 var _machinery: Machinery
 var _workshop: Workshop
 var _hud: Hud
@@ -317,6 +319,11 @@ func _heard(events: Array[int]) -> void:
 			App.Event.LAUNCHED:
 				_launch_since_ms = _alive_ms
 				_launch_pinned = -1.0
+				# The valley it leaves stays in the picture while it flies
+				# (the garden's change, heard just before, asked for the new
+				# one; nothing is drawn until the frame's end).
+				_launch_valley = maxi(app.garden.valley() - 1, 0)
+				_show_sky()
 				if not app.muted and _shot_path.is_empty():
 					_play(Sounds.Kind.AIRSHIP)
 				_pace()
@@ -372,7 +379,7 @@ func _show_everything() -> void:
 
 
 ## The hangar and what's seen through its door: drawn again only when the
-## light, the weather or the garden (and so the airship) changes.
+## light, the weather, the garden (and so the airship) or the valley changes.
 func _show_sky() -> void:
 	# The garden's plants, oldest first: the kinds of those that stand, and
 	# the rusted ones as they seized.
@@ -388,6 +395,8 @@ func _show_sky() -> void:
 	var now := app.weather.now()
 	_falling.show_weather(now.rain, now.snow, moving, 0.35 + 0.65 * app.daylight.ambient)
 	var built := app.airship_progress()
+	_outside.valley = _valley_shown()
+	_hangar.valley = _valley_shown()
 	_outside.show_world(app.daylight, now, built, plants, moving)
 	if _hangar.show_world(app.daylight, now, built, plants, moving):
 		for paint: SubViewport in _paints:
@@ -483,6 +492,14 @@ func _show_passing() -> void:
 		_stop_passing()
 
 
+## The valley in the picture: the garden's, but the one just left for as
+## long as its airship is still flying out of it.
+func _valley_shown() -> int:
+	if _launch_since_ms >= 0.0 and _launch_pinned < 0.0:
+		return _launch_valley
+	return app.garden.valley()
+
+
 ## The launched airship's flight, drawn every frame while it lasts: the
 ## part still in the hangar over its inside, the part beyond the door
 ## under it, so the door frames it.
@@ -490,11 +507,15 @@ func _show_launch() -> void:
 	if _launch_since_ms < 0.0:
 		return
 	var seconds := _launch_pinned if _launch_pinned >= 0.0 else (_alive_ms - _launch_since_ms) / 1000.0
+	_ship.valley = _valley_shown()
+	_ship_inside.valley = _valley_shown()
 	_ship.show_launch(app.daylight, app.weather.now(), seconds)
 	if seconds <= Hangar.LAUNCH_OUT_SECONDS or _ship_inside.launch_seconds >= 0.0:
 		_ship_inside.show_launch(app.daylight, app.weather.now(), seconds)
 	if _ship.launch_seconds < 0.0:
 		_launch_since_ms = -1.0
+		# The airship is gone over the pass: the new valley.
+		_show_sky()
 		_pace()
 
 
