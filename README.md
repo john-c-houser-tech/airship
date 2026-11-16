@@ -30,12 +30,36 @@ To run it from the folder instead: `bin/make-sounds` once, then
 | Key   | Action                                  |
 |-------|-----------------------------------------|
 | Space | Start 25 minutes of focus, or give up   |
+| Left, Right | Choose the plant the arm builds next |
+| Enter | Take the break's next step: plant, scrape, collect, fit (or click: the garden through the door, or the airship) |
+| T     | Take the night train's trade, when it offers one (or click through the door) |
+| L     | Launch the finished airship             |
 | M     | Turn the sounds off or on               |
 
 Airship follows Omarchy's theme colour and language. Your garden is kept in
 `~/.local/share/airship/garden.json`.
 
 ## Trying it out
+
+From the repository, `bin/try` plays the game without the waiting: sessions
+of ten seconds, in a garden of its own that starts at a stage of the game.
+Your real garden is never touched.
+
+| Command | Where it starts |
+|---|---|
+| `bin/try` | A new game. |
+| `bin/try train` | One session before the night train first calls and the first commission comes. |
+| `bin/try trade` | The train is at the station, offering a trade. |
+| `bin/try pennant` | Two commissions met: pennants hang under the door's lintel. |
+| `bin/try launch` | The airship is finished: press L. |
+| `bin/try valley` | Just after a launch, in the second valley. |
+| `bin/try again` | The same garden as you left it. |
+
+A number after the stage sets the session's seconds: `bin/try trade 30`.
+The settings below work with it: `AIRSHIP_TIME=23:00 bin/try trade`. Leave
+`AIRSHIP_WEATHER` unset when trying commissions: with the weather pinned,
+every plant is built in that weather, and a commission that asks for another
+can't be met.
 
 These pin what Airship would otherwise take from the clock and the desktop:
 

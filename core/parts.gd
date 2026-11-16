@@ -225,9 +225,9 @@ static func unlocked(airship: float) -> Array[int]:
 
 
 ## The plant the airship most needs next, of those unlocked (`open`): the kind whose
-## missing parts would take the longest for the plants already standing,
-## and one more, to make. A rough guide for when nobody chooses (it plants
-## more kettle-gourds than the drums need). Parts traded with the night
+## missing parts would take the longest for the plants already standing
+## to make (none standing: longer than one would take). A rough guide for
+## when nobody chooses. Parts traded with the night
 ## train count: a drum it brought needs no gourd. Once the ship has every
 ## part, the first of those unlocked.
 static func most_needed(plants: Array[Garden.Plant], open: Array[int] = [],
@@ -241,11 +241,48 @@ static func most_needed(plants: Array[Garden.Plant], open: Array[int] = [],
 	var longest := -1.0
 	for kind: int in open:
 		var missing := maxi(NEEDED[kind] - parts[kind], 0)
-		var sessions := float(missing * SESSIONS_A_PART[kind]) / (counts[kind] + 1)
+		# How long the plants standing will take; a kind with none counts
+		# as slower than one plant would be.
+		var sessions := float(_wait(plants, kind, missing)) if counts[kind] > 0 else missing * SESSIONS_A_PART[kind] * 2.0
+		# A plant whose first part would come no sooner than the standing
+		# ones finish is no help: a late kettle-gourd ripens after the
+		# drums are all made.
+		if counts[kind] > 0 and SESSIONS_A_PART[kind] >= sessions and SESSIONS_A_PART[kind] > 1:
+			continue
 		if sessions > longest:
 			longest = sessions
 			best = kind as Kind
 	return best
+
+
+## How many more completed sessions the plants standing need to make
+## `missing` parts of a kind, each plant from where it is in its ripening;
+## a great many if none stands.
+static func _wait(plants: Array[Garden.Plant], kind: int, missing: int) -> int:
+	if missing <= 0:
+		return 0
+	# How many sessions each standing plant of the kind has behind it.
+	var ages: Array[int] = []
+	var completed := sessions(plants)
+	var later := 0
+	for plant: Garden.Plant in plants:
+		if plant.outcome == Garden.Outcome.BUILT:
+			if kind_of(plant.blueprint) == kind:
+				ages.append(later)
+			later += 1
+		elif plant.scraped >= 0 and kind_of(plant.blueprint) == kind:
+			ages.append(maxi(completed - plant.scraped, 0))
+	if ages.is_empty():
+		return 1000000
+	var every := SESSIONS_A_PART[kind]
+	var wait := 0
+	var made_ := 0
+	while made_ < missing:
+		wait += 1
+		for age: int in ages:
+			if (age + wait) % every == 0:
+				made_ += 1
+	return wait
 
 
 static func _none() -> Array[int]:

@@ -107,22 +107,11 @@ static func _common(weather: int, season: int) -> bool:
 			and _share(weather, (season + 1) % Weather.WEIGHTS.size()) >= LEAST_SHARE_AFTER
 
 
-## Numbers of the commission's own from a plant's seed: mixed well, so
-## they don't follow the weather or the sounds rolled from the same seed.
-static func _own(plant_seed: int, number: int) -> Random:
-	var x := ((plant_seed + number * 7919 + 1) * 0x9E37_79B1) & 0xFFFF_FFFF
-	x ^= x >> 15
-	x = (x * 0x85EB_CA6B) & 0xFFFF_FFFF
-	x ^= x >> 13
-	x = (x * 0xC2B2_AE35) & 0xFFFF_FFFF
-	x ^= x >> 16
-	return Random.new(x)
-
-
 ## The commission of that number, brought by the session that built `plant`:
 ## its own numbers from that plant's seed, so it is the same every time.
 static func _asked(number: int, plant: Garden.Plant) -> Commission:
-	var random := _own(plant.plant_seed, number)
+	# Apart from the weather and the sounds rolled from the same seed.
+	var random := Random.apart(plant.plant_seed, number)
 	var commission := Commission.new()
 	commission.number = number
 	# One of the four quick plants: a kettle-gourd may not be unlocked.

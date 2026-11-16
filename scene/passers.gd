@@ -290,7 +290,16 @@ func _draw_airship() -> void:
 	var duration := float(Sounds.SECONDS[Sounds.Kind.AIRSHIP])
 	var x := AIRSHIP_SPEED * (duration * 0.5 - seconds)
 	_draw_ship(Vector3(x, AIRSHIP_HEIGHT, hangar.DOOR_Z + AIRSHIP_Z_BEYOND), 1.0, -1.0, AIRSHIP_SPEED,
-		Color(0.88, 0.83, 0.70), seconds)
+		_far_cloth(), seconds)
+
+
+## The far airship's cloth: plain canvas in the first valley; after that it
+## is the airship launched from the valley before, still flying.
+func _far_cloth() -> Color:
+	if hangar.valley <= 0:
+		return Color(0.88, 0.83, 0.70)
+	var before: Array = hangar.VALLEYS[posmod(hangar.valley - 1, hangar.VALLEYS.size())]
+	return before[2] as Color
 
 
 ## The visiting airship that brought a commission, moored by its nose to

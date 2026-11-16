@@ -1,0 +1,40 @@
+#!/bin/sh
+# Try Airship out without waiting: short sessions, in a garden of its own
+# that starts at a stage of the game. Your real garden is never touched.
+#
+#   bin/try                 a new game, 10-second sessions
+#   bin/try train           one session before the night train's first call
+#                           and the first commission
+#   bin/try trade           the train is at the station, offering a trade
+#   bin/try pennant         two commissions met: pennants under the lintel
+#   bin/try launch          the airship is finished: press L
+#   bin/try valley          just after a launch: the second valley
+#   bin/try again           carry on in the garden as you left it
+#   bin/try <stage> 30      the same, with 30-second sessions
+#
+# The sky follows the clock; pin it as usual, for example
+#   AIRSHIP_TIME=23:00 bin/try trade
+# Pin the weather (AIRSHIP_WEATHER=rain) only to look at it: every plant
+# is then built in that weather, and a commission that asks for another
+# can't be met.
+set -eu
+cd "$(dirname "$0")/.."
+stage=${1:-new}
+seconds=${2:-10}
+case $seconds in
+    ''|*[!0-9]*) echo "bin/try: the session's seconds must be a number: $seconds"; exit 1 ;;
+esac
+folder="${XDG_CACHE_HOME:-$HOME/.cache}/airship-try"
+garden="$folder/garden.json"
+mkdir -p "$folder/config"
+case $stage in
+    again) ;;
+    new|train|trade|pennant|launch|valley)
+        godot --headless --path . --script res://tools/try_garden.gd -- "$stage" "$garden" ;;
+    *)
+        sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1 ;;
+esac
+echo "bin/try: $stage, $seconds-second sessions, garden $garden"
+# Its settings (M, the sounds off or on) are its own too.
+XDG_CONFIG_HOME="$folder/config" AIRSHIP_SECONDS=$seconds AIRSHIP_GARDEN=$garden exec godot --path .
