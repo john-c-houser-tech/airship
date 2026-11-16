@@ -193,6 +193,7 @@ func _ready() -> void:
 	_show_everything()
 	if log_words:
 		print("says: " + _hud.next_step())
+		print("train: " + ("standing" if _passers.standing else "away"))
 
 
 ## Arch's godot is the editor build, which marks the window's title
@@ -373,6 +374,8 @@ func _show_break() -> void:
 	_hud.break_step = app.break_step()
 	_hud.new_plant = Parts.kind_of(app.session.blueprint())
 	var offer := app.trade()
+	# The train stands at the crossing for as long as it offers a trade.
+	_passers.show_standing(offer != null)
 	if offer != null:
 		_hud.trade_gives = offer.gives
 		_hud.trade_brings = offer.brings
