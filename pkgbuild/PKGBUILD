@@ -1,5 +1,5 @@
 pkgname=airship
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='A focus timer where a brass steam arm builds a garden while you work'
 url='https://github.com/john-c-houser-tech/airship'
