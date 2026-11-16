@@ -39,3 +39,48 @@ func test_the_flight_ends() -> void:
 	hangar.show_launch(daylight, Weather.Conditions.new(), Hangar.LAUNCH_SECONDS + 0.1)
 	check(hangar.launch_seconds < 0.0, "and over once its time is up")
 	hangar.free()
+
+
+func _range(valley: int) -> Array[float]:
+	var hangar := Hangar.new()
+	hangar.valley = valley
+	var heights: Array[float] = []
+	for az in range(-70, 71, 10):
+		heights.append(hangar._range_height(az))
+	hangar.free()
+	return heights
+
+
+func test_each_valley_has_its_own_range() -> void:
+	same(_range(3), _range(3), "a valley's range is the same every time")
+	check(_range(0) != _range(1), "the second valley's range is not the first's")
+	check(_range(1) != _range(2), "nor the third's the second's")
+	for valley in 12:
+		for h: float in _range(valley):
+			check(h >= 1800.0 and h <= 6000.0, "valley %d's range stays a range: %f" % [valley, h])
+
+
+func test_each_valley_has_its_own_colours() -> void:
+	var hangar := Hangar.new()
+	var cloths: Array[Color] = []
+	for valley in Hangar.VALLEYS.size():
+		hangar.valley = valley
+		check(not cloths.has(hangar._valley_colour(2)), "valley %d's airship has its own cloth" % valley)
+		cloths.append(hangar._valley_colour(2))
+	same(cloths[0], Hangar.CANVAS, "the first airship is plain canvas")
+	hangar.valley = Hangar.VALLEYS.size()
+	same(hangar._valley_colour(2), cloths[0], "and the colours come round again")
+	hangar.free()
+
+
+func test_the_first_valley_is_as_it_was() -> void:
+	var hangar := Hangar.new()
+	for what: int in [0, 7, 40, 90]:
+		same(hangar._roll(what), 0.5, "nothing is moved in the first valley")
+	same(hangar._valley_colour(0), Color(0.46, 0.58, 0.40), "its far grass")
+	same(hangar._valley_colour(1), Color(0.36, 0.50, 0.28), "its near grass")
+	# The highest peak stands where it stood, as high as it was.
+	check(absf(hangar._range_height(-6.0) - 4500.0) < 4500.0 * 0.1, "its highest peak: %f" % hangar._range_height(-6.0))
+	same(hangar._snow_depth(-6.0, 2900.0), 0.0, "and its snow line")
+	check(hangar._snow_depth(-6.0, 3400.0) > 0.0, "with snow above it")
+	hangar.free()

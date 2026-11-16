@@ -43,10 +43,23 @@ const ALLOY := Color(0.70, 0.72, 0.74)
 const CANVAS := Color(0.88, 0.83, 0.70)
 const WOOD := Color(0.36, 0.24, 0.15)
 const WOOD_DARK := Color(0.17, 0.11, 0.07)
+## Each valley's far grass, near grass and airship cloth, round again after
+## the last.
+const VALLEYS := [
+	[Color(0.46, 0.58, 0.40), Color(0.36, 0.50, 0.28), CANVAS],
+	[Color(0.62, 0.58, 0.36), Color(0.55, 0.47, 0.24), Color(0.74, 0.38, 0.29)],
+	[Color(0.52, 0.52, 0.54), Color(0.45, 0.39, 0.47), Color(0.55, 0.65, 0.77)],
+	[Color(0.36, 0.50, 0.42), Color(0.22, 0.38, 0.28), Color(0.87, 0.69, 0.35)],
+	[Color(0.66, 0.66, 0.48), Color(0.58, 0.58, 0.36), Color(0.63, 0.74, 0.60)],
+]
 const CONCRETE := Color(0.40, 0.29, 0.19)
 
 ## How much of the airship is built, 0 to 1.
 var built := 0.0
+## Which valley this is: how many airships have been launched before this
+## one. Each valley has its own range, hills and grass, and its airship its
+## own cloth; the first is the one the game began in.
+var valley := 0
 ## The light: the sky's colours, the sun or moon, how bright the day is.
 var daylight: Daylight
 ## The weather outside: cloud, rain, fog and snow.
@@ -170,7 +183,7 @@ func _what_shows() -> String:
 		steps.call(daylight.stars, 10.0), steps.call(daylight.warmth, 20.0),
 		steps.call(conditions.cloud, 40.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
 		steps.call(conditions.snow, 10.0), str(garden_plants), daylight.top.to_html(false).left(5), str(built)] \
-		+ " %d %d %s" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather)]
+		+ " %d %d %s %d" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather), valley]
 
 
 ## Where the light comes from: the sun across the door's view by day, the
@@ -464,6 +477,19 @@ const PEAKS := [
 ]
 
 
+## This valley's own number for one thing or another, 0 to 1: the same every
+## time, and the middle in the first valley, which is as it was drawn.
+func _roll(what: int) -> float:
+	if valley == 0:
+		return 0.5
+	return fposmod(sin(valley * 127.1 + what * 311.7) * 43758.5453, 1.0)
+
+
+## This valley's colours: 0 far grass, 1 near grass, 2 the airship's cloth.
+func _valley_colour(which: int) -> Color:
+	return (VALLEYS[posmod(valley, VALLEYS.size())] as Array)[which] as Color
+
+
 ## A fixed roughness along the range: -1 to 1, the same every time, with no
 ## pattern the eye can follow.
 func _crag(az: float, seed_: float) -> float:
@@ -476,17 +502,20 @@ func _crag(az: float, seed_: float) -> float:
 func _range_height(az: float) -> float:
 	# One connected range: a high crest the peaks stand on, so the saddles
 	# between them stay far above the foothills.
-	var best := 2500.0 + 260.0 * _crag(az * 0.3, 9.0) + 110.0 * _crag(az * 1.1, 12.0)
+	var own := valley * 1.7
+	var best := 2500.0 + 260.0 * _crag(az * 0.3, 9.0 + own) + 110.0 * _crag(az * 1.1, 12.0 + own)
 	for k in PEAKS.size():
 		var pk: Array = PEAKS[k]
-		var off := az - float(pk[0])
+		# Each valley moves its peaks a little and makes them taller or lower.
+		var off := az - float(pk[0]) - (_roll(k) - 0.5) * 9.0
+		var top := float(pk[1]) * (0.8 + 0.4 * _roll(k + 40))
 		var flank: float = float(pk[2]) if off < 0.0 else float(pk[3])
 		var t := 1.0 - absf(off) / flank
 		if t <= 0.0:
 			continue
 		# Broad at the foot, steep near the top, with shoulders and notches.
-		var h: float = float(pk[1]) * (0.62 * t + 0.38 * t * t)
-		h += float(pk[1]) * (0.06 * _crag(az, float(k)) + 0.03 * _crag(az * 2.3, k + 20.0)) * minf(1.0, t * 3.0 + 0.2)
+		var h: float = top * (0.62 * t + 0.38 * t * t)
+		h += top * (0.06 * _crag(az, k + own) + 0.03 * _crag(az * 2.3, k + 20.0 + own)) * minf(1.0, t * 3.0 + 0.2)
 		best = maxf(best, h)
 	return best
 
@@ -511,8 +540,8 @@ func _ground_at(x: float, z: float) -> float:
 func _draw_land() -> void:
 	var horizon := SIZE * 0.5 + _focal * tan(_pitch)
 	var dim := 0.3 + 0.7 * _day
-	var far_grass := _shade(Color(0.46, 0.58, 0.40), dim)
-	var near_grass := _shade(Color(0.36, 0.50, 0.28), dim)
+	var far_grass := _shade(_valley_colour(0), dim)
+	var near_grass := _shade(_valley_colour(1), dim)
 	_fan(PackedVector2Array([Vector2(0, horizon - 2), Vector2(SIZE, horizon - 2), Vector2(SIZE, SIZE), Vector2(0, SIZE)]),
 		PackedColorArray([far_grass, far_grass, near_grass, near_grass]))
 	# The far range: grey-blue peaks, sunlit where they face left, snow on top.
@@ -542,15 +571,16 @@ func _draw_land() -> void:
 					_ridge_point(az + step, dist, h1 - snow1), _ridge_point(az, dist, h0 - snow0)],
 				white)
 	# Foothills, each row higher and hazier than the one in front.
-	_draw_hills(9000.0, 900.0, 260.0, _shade(Color(0.42, 0.52, 0.56), dim), _shade(Color(0.58, 0.66, 0.70), dim), 0.31)
-	_draw_hills(5200.0, 430.0, 150.0, _shade(Color(0.34, 0.47, 0.42), dim), _shade(Color(0.48, 0.58, 0.54), dim), 1.9)
+	_draw_hills(9000.0, 900.0, 260.0, _shade(Color(0.42, 0.52, 0.56), dim), _shade(Color(0.58, 0.66, 0.70), dim), 0.31 + valley * 2.3)
+	_draw_hills(5200.0, 430.0, 150.0, _shade(Color(0.34, 0.47, 0.42), dim), _shade(Color(0.48, 0.58, 0.54), dim), 1.9 + valley * 2.3)
 	_draw_ground(far_grass, near_grass)
 	_draw_railway(dim)
 	_draw_road(dim)
 
 
 func _snow_depth(az: float, h: float) -> float:
-	var over := h - 2900.0
+	# The snow lies lower in some valleys than in others.
+	var over := h - 2900.0 - (_roll(90) - 0.5) * 700.0
 	if over <= 0.0:
 		return 0.0
 	# Ragged lower edge: streaks of snow running down the gullies.
@@ -1264,7 +1294,8 @@ func _cloth_shade(p: Vector3, n: Vector3) -> Color:
 	var sheen := pow(maxf(n.dot((view + _light).normalized()), 0.0), 6.0) * 0.12 * (_sun + _moon)
 	var ambient := lerpf(0.62, 0.8, _afield) * (0.35 + 0.65 * _day)
 	var f := ambient + maxf(n.y, 0.0) * 0.12 + diffuse * 0.6
-	return Color(CANVAS.r * f + sheen, CANVAS.g * f + sheen, CANVAS.b * f + sheen * 0.8)
+	var cloth := _valley_colour(2)
+	return Color(cloth.r * f + sheen, cloth.g * f + sheen, cloth.b * f + sheen * 0.8)
 
 
 func _cloth_item(i: int, j: int) -> Item:
@@ -1286,7 +1317,7 @@ func _cloth_item(i: int, j: int) -> Item:
 	var cm := _shade(_cloth_shade(w[2], n_m), 0.94)
 	var cb := _cloth_shade(w[4], n_b)
 	if not facing:
-		var inside := _shade(CANVAS, 0.55)
+		var inside := _shade(_valley_colour(2), 0.55)
 		ca = inside
 		cm = _shade(inside, 0.9)
 		cb = inside
