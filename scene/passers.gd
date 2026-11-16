@@ -1,5 +1,6 @@
 extends "res://scene/corner_canvas.gd"
-## What passes outside, seen through the door while its sound plays (and
+## What passes outside, seen through the door while its sound plays (also
+## the airship that brought a commission, moored at a mast for the break, and
 ## the train that stands there silent while it offers a trade): the
 ## night train along the railway across the valley, its chimney puffing
 ## steam, its headlamp lit after dark; and by day an airship crossing the sky.
@@ -35,8 +36,19 @@ const AIRSHIP_Z_BEYOND := 2600.0
 var kind := -1
 ## Seconds into its sound.
 var seconds := 0.0
+## The visiting airship moored outside: the number of the commission it
+## brought (its colour), or -1 for none.
+var visitor := -1
 ## Whether the train stands at the crossing, waiting to trade.
 var standing := false
+
+
+## Moors the visiting airship of that commission outside, or sends it off.
+func show_visitor(number: int) -> void:
+	if visitor == number:
+		return
+	visitor = number
+	queue_redraw()
 
 
 ## Stands the train at the crossing, or sends it on.
@@ -61,6 +73,8 @@ func passing() -> bool:
 func _draw() -> void:
 	if hangar == null or hangar.daylight == null:
 		return
+	if visitor >= 0:
+		_draw_visitor()
 	var train_passing := passing() and kind == Sounds.Kind.TRAIN
 	if standing and not train_passing:
 		# The train that passes in the night is this one, on its way.
@@ -275,14 +289,32 @@ func _draw_exhaust(light: float) -> void:
 func _draw_airship() -> void:
 	var duration := float(Sounds.SECONDS[Sounds.Kind.AIRSHIP])
 	var x := AIRSHIP_SPEED * (duration * 0.5 - seconds)
-	_draw_ship(Vector3(x, AIRSHIP_HEIGHT, hangar.DOOR_Z + AIRSHIP_Z_BEYOND), 1.0, -1.0, AIRSHIP_SPEED)
+	_draw_ship(Vector3(x, AIRSHIP_HEIGHT, hangar.DOOR_Z + AIRSHIP_Z_BEYOND), 1.0, -1.0, AIRSHIP_SPEED,
+		Color(0.88, 0.83, 0.70), seconds)
+
+
+## The visiting airship that brought a commission, moored by its nose to
+## the valley's mast (hangar.gd draws that; it always stands), in its own
+## colour: a still picture, a little steam up, its propeller at rest.
+func _draw_visitor() -> void:
+	var size := 0.55
+	var top: Vector3 = hangar.mast_head()
+	var light := _outside_light()
+	# The ship, its nose at the mast's head, and a line down from its tail.
+	var centre := top + Vector3(-120.0 * size - 2.0, 0, 0)
+	var tail := _view(centre + Vector3(-118.0 * size, -4.0, 0))
+	var stake := _view(Vector3(centre.x - 150.0 * size, 0, centre.z))
+	draw_line(Vector2(tail.x, tail.y), Vector2(stake.x, stake.y), _dim(Color(0.55, 0.50, 0.42), light), 1.0, true)
+	var colours: Array[Color] = hangar.PENNANTS
+	_draw_ship(centre, size, 1.0, 0.0, colours[visitor % colours.size()].lerp(Color(0.88, 0.83, 0.70), 0.25), 2.0)
 
 
 ## An airship side on, its middle at `centre`, `size` times the far one's
-## 240 feet, its nose to the right (`facing` 1) or the left (-1): a cream
-## cloth hull and fins, its gondola, the steam engine and propeller behind
-## it, the stack's exhaust left behind at `speed` feet a second.
-func _draw_ship(centre: Vector3, size: float, facing: float, speed: float) -> void:
+## 240 feet, its nose to the right (`facing` 1) or the left (-1): a
+## cloth hull and fins in `hull_colour`, its gondola, the steam engine and propeller behind
+## it, the stack's exhaust left behind at `speed` feet a second (at rest,
+## moored, when that is nothing), as it is `at_seconds` into its passing.
+func _draw_ship(centre: Vector3, size: float, facing: float, speed: float, hull_colour: Color, at_seconds: float) -> void:
 	var x := centre.x
 	var y := centre.y
 	var z := centre.z
@@ -290,8 +322,9 @@ func _draw_ship(centre: Vector3, size: float, facing: float, speed: float) -> vo
 	var back := -facing * size
 	var up := size
 	var light := _outside_light()
-	var cloth := _dim(Color(0.88, 0.83, 0.70), light)
-	var shade := _dim(Color(0.70, 0.65, 0.55), light)
+	var cloth := _dim(hull_colour, light)
+	# The far airship's cream, shaded as it always was.
+	var shade := _dim(Color(hull_colour.r * 0.7 / 0.88, hull_colour.g * 0.65 / 0.83, hull_colour.b * 0.55 / 0.70, hull_colour.a), light)
 	# The hull: an ellipse 240 by 56 feet, lit from above.
 	var hull := PackedVector2Array()
 	var colours := PackedColorArray()
@@ -354,17 +387,19 @@ func _draw_ship(centre: Vector3, size: float, facing: float, speed: float) -> vo
 	for k in 16:
 		var t := TAU * k / 16.0
 		blur.append(Vector2(h.x + cos(t) * maxf(sweep * 0.16, 1.0), h.y + sin(t) * sweep))
-	draw_colored_polygon(blur, _dim(Color(0.80, 0.74, 0.62, 0.35), light))
-	var blade := sweep * absf(cos(seconds * 19.0))
+	# At rest when the ship is moored: no blur, one blade upright.
+	if speed > 0.0:
+		draw_colored_polygon(blur, _dim(Color(0.80, 0.74, 0.62, 0.35), light))
+	var blade := sweep * (absf(cos(at_seconds * 19.0)) if speed > 0.0 else 1.0)
 	draw_line(Vector2(h.x, h.y - blade), Vector2(h.x, h.y + blade), _dim(Color(0.45, 0.33, 0.20), light), maxf(1.4 * size * h.z, 1.0), true)
 	draw_circle(Vector2(h.x, h.y), maxf(1.8 * size * h.z, 1.0), brass)
 	# The stack's exhaust, like the train's: small wisps, sooty as they
 	# leave, whitening, spreading and thinning as they are left behind.
 	var every := 0.07
-	var newest := floorf(seconds / every)
+	var newest := floorf(at_seconds / every)
 	for k in 90:
 		var born := (newest - k) * every
-		var age := seconds - born
+		var age := at_seconds - born
 		var a := _chance(newest - k)
 		var b := _chance((newest - k) * 1.7 + 9.0)
 		var beat := 0.5 + 0.5 * pow(0.5 + 0.5 * cos(TAU * born * 1.6), 2.0)
@@ -373,6 +408,10 @@ func _draw_ship(centre: Vector3, size: float, facing: float, speed: float) -> vo
 			continue
 		var trail := age * speed * 0.9 + (a - 0.5) * (1.0 + age * 3.0) * size
 		var rise := (4.0 * (1.0 - exp(-age * 1.4)) + age * (0.8 + 1.4 * a)) * size
+		if speed <= 0.0:
+			# Moored: a thin thread of steam going straight up.
+			rise *= 4.0
+			alpha *= 0.45
 		var at := _view(stack_top + Vector3(-facing * trail, rise, 0))
 		var white := clampf(age * 1.1, 0.0, 1.0)
 		var tone := lerpf(0.40, 0.94, white) * light + 0.04

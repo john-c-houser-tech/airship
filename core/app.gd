@@ -71,8 +71,8 @@ var _on_planter := false
 # The parts picked up in this run (from the garden's plants, or brought
 # by the night train), by kind: at least those fitted. Not saved: after a new start they are picked again.
 var _collected: Array[int] = []
-# A session has started since the night train last called, so it has moved
-# on: for a session the garden doesn't keep (a trial run), which leaves no
+# A session has started since the night train (or a visiting airship)
+# last called, so it has moved on: for a session the garden doesn't keep (a trial run), which leaves no
 # plant to tell by.
 var _train_left := false
 
@@ -288,6 +288,16 @@ func _have() -> Array[int]:
 ## how many were met (core/commissions.gd).
 func commissions() -> Commissions.State:
 	return Commissions.state(garden.valley_plants())
+
+
+## Which commission's visiting airship is moored outside (its number), or
+## -1: it stays for the break after the session that brought it, and
+## leaves when the next session starts.
+func visitor() -> int:
+	if session.state() == Session.State.BUILDING or _train_left:
+		return -1
+	var now := commissions()
+	return now.open.number if now.open != null and now.fresh else -1
 
 
 ## The trade the night train offers in this break, or null.

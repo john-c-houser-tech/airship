@@ -194,6 +194,8 @@ func _ready() -> void:
 	if log_words:
 		print("says: " + _hud.next_step())
 		print("train: " + ("standing" if _passers.standing else "away"))
+		print("visitor: %d" % _passers.visitor)
+		print("pennants: %d" % _hangar.pennants)
 
 
 ## Arch's godot is the editor build, which marks the window's title
@@ -375,6 +377,8 @@ func _show_break() -> void:
 	_hud.break_step = app.break_step()
 	_hud.new_plant = Parts.kind_of(app.session.blueprint())
 	_hud.commissions = app.commissions()
+	# The airship that brought a commission stays moored for the break.
+	_passers.show_visitor(app.visitor())
 	var offer := app.trade()
 	# The train stands at the crossing for as long as it offers a trade.
 	_passers.show_standing(offer != null)
@@ -410,6 +414,7 @@ func _show_sky() -> void:
 	var built := app.airship_progress()
 	_outside.valley = _valley_shown()
 	_hangar.valley = _valley_shown()
+	_hangar.pennants = app.commissions().met
 	_outside.show_world(app.daylight, now, built, plants, moving)
 	if _hangar.show_world(app.daylight, now, built, plants, moving):
 		for paint: SubViewport in _paints:

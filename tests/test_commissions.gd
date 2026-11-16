@@ -148,3 +148,20 @@ func test_the_next_commission_comes_from_the_plant_that_met_the_last() -> void:
 	plants.insert(first.count, _plant(first.kind, _weather_of(first), 77, false))
 	var same_again := Commissions.state(plants)
 	same([same_again.met, same_again.open.kind, same_again.open.weather], [1, second.kind, second.weather], "a session given up in between changes nothing")
+
+
+func test_the_visitor_is_here_while_its_commission_is_the_newest_news() -> void:
+	var plants := _five(5)
+	check(Commissions.state(plants).fresh, "the fifth session's plant brought it")
+	var asked := Commissions.state(plants).open
+	plants.push_front(_plant((asked.kind + 1) % 4, "fog", 600))
+	check(not Commissions.state(plants).fresh, "after another session it has gone")
+	plants.pop_front()
+	plants.push_front(_plant(asked.kind, "fog", 601, false))
+	check(not Commissions.state(plants).fresh, "also after one given up")
+	plants.pop_front()
+	for k in asked.count:
+		same(Commissions.state(plants).fresh, k == 0, "here when it asks, not while the commission is under way")
+		plants.push_front(_plant(asked.kind, _weather_of(asked), 610 + k))
+	check(Commissions.state(plants).fresh, "the plant that meets one brings the next, and its airship")
+	check(not Commissions.state(plants.slice(1, 5)).fresh, "no commission, no visitor")

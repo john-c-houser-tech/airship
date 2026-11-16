@@ -29,7 +29,9 @@ archived), whose rules and tests are the spec for Airship's rules.
   the airship, clear where the door shows the outside). `passers.gd` draws
   between them: the night train on the railway and the airship crossing the
   sky by day, each while its sound plays, every frame from how far into the
-  sound it is (and the train standing at the station past the crossing,
+  sound it is (and, as still pictures, a visiting airship moored at the valley's mast
+  for the break it brings a commission in, and the train standing at the station
+  past the crossing,
   which `hangar.gd` draws in the outside picture, while it offers a
   trade); and `falling.gd`, rain and snow moving while the arm works
   (still, painted into the inside picture, between sessions). The
@@ -66,8 +68,10 @@ archived), whose rules and tests are the spec for Airship's rules.
   trade).
   `commissions.gd`: a visiting airship asks for plants built a certain
   way (kind and weather), one commission at a time and no deadline;
-  each met wins a pennant. Nothing is saved for them: it all follows
-  from the valley's plants.
+  each met wins a pennant, hung under the door's lintel (`hangar.gd`).
+  The airship that brings one is moored outside for that break
+  (`passers.gd`). Nothing is saved for them: it all follows from the
+  valley's plants.
   Blueprints unlock as the airship grows; Left and Right choose the next
   plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.

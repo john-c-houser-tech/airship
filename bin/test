@@ -113,17 +113,44 @@ run frame env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_W
 run launch env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
     timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
     -- --passing=launch:8 --shot="$PWD/$out/launch.png"
-# A garden five sessions old, so the night train offers a trade: it stands
-# at the station (the words still ask for the parts to be collected first).
+# A garden five sessions old, so the night train offers a trade and an
+# airship brings the first commission: the train stands at the station and
+# the airship is moored (the words still ask for the parts to be collected first).
 cat >"$out/trade.json" <<'GARDEN'
 {"version": 1, "plants": [{"blueprint": 2, "seed": 1, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-10T10:00:00", "minutes": 25}, {"blueprint": 3, "seed": 2, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-11T10:00:00", "minutes": 25}, {"blueprint": 2, "seed": 3, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-12T10:00:00", "minutes": 25}, {"blueprint": 3, "seed": 4, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-13T10:00:00", "minutes": 25}, {"blueprint": 0, "seed": 5, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-14T10:00:00", "minutes": 25}]}
 GARDEN
 run trade env -u XMODIFIERS AIRSHIP_GARDEN="$PWD/$out/trade.json" AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=23:30 AIRSHIP_WEATHER=clear \
     timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
     -- --log-words --shot="$PWD/$out/trade.png"
-if ! grep -qx 'train: standing' "$out/trade.log"; then
+if ! grep -qx 'train: standing' "$out/trade.log" || ! grep -qx 'visitor: 0' "$out/trade.log"; then
     cat "$out/trade.log"
-    echo "bin/test: trade: the train isn't standing at the station"
+    echo "bin/test: trade: the train isn't standing at the station, or the visiting airship isn't moored"
+    exit 1
+fi
+# A garden where commissions have been met, at night: pennants hang under
+# the door's lintel. Five sessions, then forty more of the four quick
+# plants in turn, in weather that changes every fourth.
+{
+    printf '{"version":1,"plants":['
+    n=0
+    while [ "$n" -lt 45 ]; do
+        weather=fog
+        if [ "$n" -ge 5 ]; then
+            case $(( (n / 4) % 3 )) in 0) weather=cloudy ;; 1) weather=clear ;; *) weather=rain ;; esac
+        fi
+        [ "$n" -gt 0 ] && printf ','
+        printf '{"blueprint":%d,"seed":%d,"outcome":"built","season":"spring","weather":"%s","progress":1.0,"when":"2026-04-%02dT10:00:00","minutes":25}' \
+            $(( n % 4 )) $(( n + 1 )) "$weather" $(( n / 2 + 1 ))
+        n=$(( n + 1 ))
+    done
+    printf ']}\n'
+} >"$out/pennants.json"
+run pennants env -u XMODIFIERS AIRSHIP_GARDEN="$PWD/$out/pennants.json" AIRSHIP_DATE=2026-04-28 AIRSHIP_TIME=23:30 AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --log-words --shot="$PWD/$out/pennants.png"
+if ! grep -qE '^pennants: [1-9]' "$out/pennants.log"; then
+    cat "$out/pennants.log"
+    echo "bin/test: pennants: no commission was met, so no pennant was drawn"
     exit 1
 fi
 echo "bin/test: passed; the frame is $out/frame.png"
