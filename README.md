@@ -35,6 +35,7 @@ To run it from the folder instead: `bin/make-sounds` once, then
 | T     | Take the night train's trade, when it offers one (or click through the door) |
 | L     | Launch the finished airship             |
 | M     | Turn the sounds off or on               |
+| H     | Unfurl the help banner, or roll it up (Esc or a click rolls it up too): what is happening and the keys that do something now |
 
 Airship follows Omarchy's theme colour and language. Your garden is kept in
 `~/.local/share/airship/garden.json`.

@@ -130,7 +130,7 @@ if ! grep -qx 'train: standing' "$out/trade.log" || ! grep -qx 'visitor: 0' "$ou
     exit 1
 fi
 # A garden where commissions have been met, at night: pennants hang under
-# the door's lintel. Five sessions, then forty more of the four quick
+# the door's lintel, and the help banner is down, at its fullest. Five sessions, then forty more of the four quick
 # plants in turn, in weather that changes every fourth.
 {
     printf '{"version":1,"plants":['
@@ -149,7 +149,7 @@ fi
 } >"$out/pennants.json"
 run pennants env -u XMODIFIERS AIRSHIP_GARDEN="$PWD/$out/pennants.json" AIRSHIP_DATE=2026-04-28 AIRSHIP_TIME=23:30 AIRSHIP_WEATHER=clear \
     timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
-    -- --log-words --shot="$PWD/$out/pennants.png"
+    -- --log-words --banner --shot="$PWD/$out/pennants.png"
 if ! grep -qE '^pennants: [1-9]' "$out/pennants.log"; then
     cat "$out/pennants.log"
     echo "bin/test: pennants: no commission was met, so no pennant was drawn"
