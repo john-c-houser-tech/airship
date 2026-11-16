@@ -662,11 +662,14 @@ func _draw_railway(dim: float) -> void:
 
 
 ## The station, beyond the track just past the crossing: where its platform
-## begins and ends, and where a train's front stands when it stops there
-## (its engine by the water tower), in feet along the line from the road.
+## begins and ends, in feet along the line from the road; how far along the
+## platform its water tower stands; and where a train's front stands when
+## it stops there, its tender (52 feet behind its front) under the
+## tower's spout.
 const STATION_FROM := 24.0
 const STATION_TO := 142.0
-const STATION_STOP := 140.0
+const STATION_TOWER := 74.0
+const STATION_STOP := STATION_FROM + STATION_TOWER + 52.0
 
 
 ## An upright face in the world, looking at the hangar: from x0 to x1 along
@@ -690,21 +693,38 @@ func _draw_station(dim: float) -> void:
 	var slate := _shade(Color(0.27, 0.28, 0.31), dim)
 	var iron := _shade(Color(0.16, 0.16, 0.17), dim)
 	var lit := _shade(Color(0.20, 0.24, 0.28), dim).lerp(Color(1.0, 0.80, 0.46), 0.15 + 0.8 * night)
-	# The water tower, by where the engine stops: a copper tank on iron legs
-	# under a low cone, its spout reaching for the track.
-	var tower := to - 16.0
-	for leg: float in [-5.5, 5.5]:
-		_beam(Vector3(tower + leg, top, z + 9), Vector3(tower + leg * 0.8, 17, z + 9), 0.7, iron, Color(0, 0, 0, 0))
-	_beam(Vector3(tower - 5.2, 9, z + 9), Vector3(tower + 4.6, 15, z + 9), 0.35, iron, Color(0, 0, 0, 0))
-	_beam(Vector3(tower + 5.2, 9, z + 9), Vector3(tower - 4.6, 15, z + 9), 0.35, iron, Color(0, 0, 0, 0))
-	_face(tower - 7.0, tower + 7.0, 17, 27, z + 9, _shade(COPPER, dim * 0.9))
-	_face(tower - 7.0, tower - 3.5, 17, 27, z + 8.9, _shade(COPPER, dim * 1.15))
+	# The water tower, by where the tender stops: a copper tank on four
+	# iron legs under a low cone, its spout at the front, raised on its
+	# hinge, ready to drop over the track and fill the tender.
+	var tower := from + STATION_TOWER
+	var none := Color(0, 0, 0, 0)
+	# The far pair first, drawn inside the near pair and paler so that all
+	# four show from this far off, then the near pair, braced corner to
+	# corner.
+	var far_iron := _shade(Color(0.24, 0.24, 0.25), dim)
+	for leg: float in [-3.2, 3.2]:
+		_beam(Vector3(tower + leg, top, z + 13), Vector3(tower + leg, 17, z + 13), 0.7, far_iron, none)
+	for leg: float in [-6.5, 6.5]:
+		_beam(Vector3(tower + leg * 1.12, top, z + 5), Vector3(tower + leg, 17, z + 5), 0.9, iron, none)
+	_beam(Vector3(tower - 7.0, 8, z + 5), Vector3(tower + 6.6, 15, z + 5), 0.3, iron, none)
+	_beam(Vector3(tower + 7.0, 8, z + 5), Vector3(tower - 6.6, 15, z + 5), 0.3, iron, none)
+	_face(tower - 7.0, tower + 7.0, 17, 27, z + 5, _shade(COPPER, dim * 0.9))
+	_face(tower - 7.0, tower - 3.5, 17, 27, z + 4.9, _shade(COPPER, dim * 1.15))
 	for band: float in [18.2, 22.0, 25.8]:
-		_face(tower - 7.2, tower + 7.2, band - 0.3, band + 0.3, z + 8.8, _shade(BRASS, dim))
-	_flat([Vector3(tower - 8.0, 27, z + 9), Vector3(tower + 8.0, 27, z + 9), Vector3(tower, 31, z + 9)], slate)
-	_beam(Vector3(tower - 6.0, 18.5, z + 8), Vector3(tower - 13.0, 15.5, z + 1), 0.6, iron, Color(0, 0, 0, 0))
+		_face(tower - 7.2, tower + 7.2, band - 0.3, band + 0.3, z + 4.8, _shade(BRASS, dim))
+	_flat([Vector3(tower - 8.0, 27, z + 5), Vector3(tower + 8.0, 27, z + 5), Vector3(tower, 31, z + 9)], slate)
+	# The spout: hinged at the tank's foot, held up by a chain from the
+	# tank's rim, its brass mouth out over the track where the tender
+	# stops, clear of the tank so it shows against the hills.
+	var hinge := Vector3(tower - 3.0, 17.6, z + 4.5)
+	var mouth := Vector3(tower - 11.0, 21.5, z - 5.5)
+	_beam(hinge, mouth, 1.5, iron, none)
+	_beam(Vector3(tower - 6.0, 26.8, z + 4.5), mouth, 0.25, _shade(Color(0.55, 0.52, 0.48), dim), none)
+	var mouth_seen := _to_cam(mouth)
+	if mouth_seen.z > NEAR:
+		_disc(_project(mouth_seen), maxf(1.1 * _focal / mouth_seen.z, 1.2), _shade(BRASS, dim))
 	# The station house: boarded walls, a slate roof with a chimney.
-	var house := from + 30.0
+	var house := from + 8.0
 	var house_to := house + 46.0
 	_face(house + 34.0, house + 37.0, 20, 28, z + 16, _shade(Color(0.42, 0.22, 0.17), dim))
 	_flat([Vector3(house - 3.0, 15.5, z + 5), Vector3(house_to + 3.0, 15.5, z + 5),
@@ -732,7 +752,7 @@ func _draw_station(dim: float) -> void:
 		var x := house - 5.0 + post * 14.0
 		_beam(Vector3(x, top, z + 1), Vector3(x, 13.0, z + 1), 0.45, iron, Color(0, 0, 0, 0))
 	# The platform lamp.
-	var lamp := Vector3(from + 12.0, 14.0, z + 2)
+	var lamp := Vector3(to - 14.0, 14.0, z + 2)
 	_beam(Vector3(lamp.x, top, lamp.z), lamp, 0.4, iron, Color(0, 0, 0, 0))
 	var seen := _to_cam(lamp)
 	if seen.z > NEAR:

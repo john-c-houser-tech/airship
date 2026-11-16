@@ -11,7 +11,7 @@ extends "res://scene/corner_canvas.gd"
 ## picture start together); nothing is carried from frame to frame.
 ##
 ## While the night train offers a trade it stands at the station past the
-## crossing (hangar.gd draws it), its engine by the water tower, steam
+## crossing (hangar.gd draws it), its tender under the water tower's spout, steam
 ## drifting from its chimney: a still picture, drawn once.
 
 ## Seconds into the train's sound when it reaches the crossing (the sound's
