@@ -107,8 +107,13 @@ var _given: Array[int] = []
 var _file_given: Array[int] = []
 var _brought: Array[int] = []
 var _file_brought: Array[int] = []
-# A trade being made: the kind given, how many, the kind brought, and the
-# valley and the parts brought so far when it was asked for. Empty otherwise.
+# How many sessions had been completed in this valley at its last trade
+# (0: none yet), and the file's: the larger wins.
+var _traded_at := 0
+var _file_traded_at := 0
+# A trade being made: the kind given, how many, the kind brought, the
+# valley and the parts brought so far when it was asked for, and the
+# sessions completed then (the train's visit). Empty otherwise.
 var _trade: Array[int] = []
 # The valley the game has reached (airships launched), and the file's.
 var _valley := 0
@@ -138,6 +143,7 @@ func _init(path: String) -> void:
 		_fitted = _file_fitted.duplicate()
 		_given = _file_given.duplicate()
 		_brought = _file_brought.duplicate()
+		_traded_at = _file_traded_at
 		_valley = _file_valley
 	elif found == Problem.CANNOT_OPEN or found == Problem.CANNOT_READ:
 		_read_only = true
@@ -194,6 +200,7 @@ func launch() -> void:
 	_fitted = []
 	_given = []
 	_brought = []
+	_traded_at = 0
 	_keep()
 
 
@@ -224,17 +231,25 @@ func brought() -> Array[int]:
 	return _brought.duplicate()
 
 
+## How many sessions had been completed in this valley when the night
+## train last traded here; 0 if it never has.
+func traded_at() -> int:
+	return _traded_at
+
+
 ## A trade with the night train: `count` parts of the kind `gives` go,
-## and one of the kind `brings` comes. Made over the file as it is now,
+## and one of the kind `brings` comes, after the valley's `sessions`
+## completed sessions (kept, so the train trades once for each visit). Made over the file as it is now,
 ## under the lock, and only if no other Airship traded (or launched)
-## meanwhile: then that one's trade stands, and this one isn't made. Nor
+## meanwhile, nor this one already on this visit: then that trade stands,
+## and this one isn't made. Nor is it made if it can't be saved. Nor
 ## is it made while another Airship holds the lock (`problem()` says BUSY;
 ## ask again). A garden whose file can't be read, or that is kept nowhere,
 ## trades for show, as it fits.
-func trade(gives: int, count: int, brings: int) -> void:
-	if gives < 0 or gives >= MOST_KINDS or brings < 0 or brings >= MOST_KINDS or count < 0:
+func trade(gives: int, count: int, brings: int, sessions: int) -> void:
+	if gives < 0 or gives >= MOST_KINDS or brings < 0 or brings >= MOST_KINDS or count < 0 or sessions < 1:
 		return
-	_trade = [gives, count, brings, _valley, _sum(_brought)]
+	_trade = [gives, count, brings, _valley, _sum(_brought), mini(sessions, 2147483647)]
 	if _read_only:
 		_make_trade()
 	_keep()
@@ -242,10 +257,21 @@ func trade(gives: int, count: int, brings: int) -> void:
 
 
 # Makes the trade asked for, if the garden is still where it was asked:
-# the same valley, and as many parts brought.
+# the same valley, as many parts brought, no trade yet on this visit of
+# the train or a later one, and no session since.
 func _make_trade() -> void:
-	if _trade.is_empty() or _trade[3] != _valley or _trade[4] != _sum(_brought):
+	if _trade.is_empty() or _trade[3] != _valley or _trade[4] != _sum(_brought) or _trade[5] <= _traded_at:
 		return
+	# The train has moved on if another Airship has had a session since:
+	# the valley's newest plant must be the one that brought it.
+	var here := valley_plants()
+	var completed := 0
+	for plant: Plant in here:
+		if plant.outcome == Outcome.BUILT:
+			completed += 1
+	if completed != _trade[5] or here[0].outcome != Outcome.BUILT:
+		return
+	_traded_at = _trade[5]
 	while _given.size() <= _trade[0]:
 		_given.append(0)
 	while _brought.size() <= _trade[2]:
@@ -321,8 +347,17 @@ func _keep() -> void:
 	_scrape_again(plants)
 	_plants = plants
 	_follow_file()
+	# A trade that can't be saved isn't made: shown here and not in the
+	# file, another Airship could trade on the same visit, and both stand.
+	var before: Array[Array] = [_given.duplicate(), _brought.duplicate()]
+	var mark := _traded_at
+	var trading := not _trade.is_empty()
 	_make_trade()
 	save_error = _save()
+	if trading and not save_error.is_empty():
+		_given.assign(before[0])
+		_brought.assign(before[1])
+		_traded_at = mark
 	_let_go_of_lock()
 	if save_error.is_empty():
 		_unsaved.clear()
@@ -362,10 +397,12 @@ func _follow_file() -> void:
 		_fitted = _file_fitted.duplicate()
 		_given = _file_given.duplicate()
 		_brought = _file_brought.duplicate()
+		_traded_at = _file_traded_at
 	elif _file_valley == _valley:
 		_fitted = _most(_fitted, _file_fitted)
 		_given = _most(_given, _file_given)
 		_brought = _most(_brought, _file_brought)
+		_traded_at = maxi(_traded_at, _file_traded_at)
 
 
 ## The larger of two counts, kind by kind.
@@ -455,6 +492,7 @@ func _read() -> Variant:
 	_file_fitted = []
 	_file_given = []
 	_file_brought = []
+	_file_traded_at = 0
 	_file_valley = 0
 	if not FileAccess.file_exists(_path):
 		# A link to a garden that isn't there (a synced folder that hasn't
@@ -477,7 +515,7 @@ func _read() -> Variant:
 	# A garden from a newer Airship may hold what this one doesn't know of;
 	# saving over it would drop that.
 	var version := _whole((json.data as Dictionary).get("version", 1))
-	if version < 1 or version > 3:
+	if version < 1 or version > 4:
 		return Problem.CANNOT_READ
 	# Parts fitted to the airship, and those traded with the night train:
 	# absent in a garden from before there were any, else whole numbers,
@@ -493,6 +531,13 @@ func _read() -> Variant:
 				return Problem.CANNOT_READ
 			read.append(_whole(count))
 		counts.append(read)
+	# The sessions completed at the last trade: absent before any, and in a
+	# garden from when trades waited.
+	var traded_at_read := 0
+	if (json.data as Dictionary).has("traded_at"):
+		traded_at_read = _whole((json.data as Dictionary).get("traded_at"))
+		if traded_at_read < 0:
+			return Problem.CANNOT_READ
 	# The valley reached: absent before any launch.
 	var valley_read := 0
 	if (json.data as Dictionary).has("valley"):
@@ -509,6 +554,7 @@ func _read() -> Variant:
 	_file_fitted.assign(counts[0])
 	_file_given.assign(counts[1])
 	_file_brought.assign(counts[2])
+	_file_traded_at = traded_at_read
 	_file_valley = valley_read
 	return plants
 
@@ -526,17 +572,20 @@ func _save() -> String:
 	# such an Airship leaves alone: saving there would drop the valleys,
 	# and which plant belongs to which can't be worked out again.
 	var valleys := _valley > 0 or _plants.any(func(plant: Plant) -> bool: return plant.valley > 0)
-	# Version 3 once a trade is made: an Airship from before trades would
+	# Version 4 once a trade is made (an Airship of version 3 would drop the
+	# mark of the last trade, and trade again on the same visit): an Airship from before trades would
 	# drop them on saving, and the spares given could be given again.
 	var traded := _given.any(func(count: int) -> bool: return count > 0) \
 			or _brought.any(func(count: int) -> bool: return count > 0)
-	var whole := {"version": 3 if traded else 2 if valleys else 1, "plants": entries}
+	# (Version 3 was a garden whose trades waited, with no mark of the last.)
+	var whole := {"version": 4 if traded else 2 if valleys else 1, "plants": entries}
 	# Only once something is fitted, so a garden without parts reads as before.
 	if _fitted.any(func(count: int) -> bool: return count > 0):
 		whole["fitted"] = _fitted
 	if traded:
 		whole["given"] = _given
 		whole["brought"] = _brought
+		whole["traded_at"] = _traded_at
 	if _valley > 0:
 		whole["valley"] = _valley
 	var text := JSON.stringify(whole, "  ", false) + "\n"

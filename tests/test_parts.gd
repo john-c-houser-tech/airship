@@ -159,12 +159,16 @@ func test_the_night_train_brings_what_the_garden_is_slowest_to_make() -> void:
 	var none: Array[int] = []
 	# Five gear-flowers have made ten cogs, and nothing makes a strut.
 	var offer := Parts.trade(_flowers(5), none, none)
-	check(offer != null, "five sessions: a trade")
+	check(offer != null, "after five sessions: a trade")
 	same(offer.gives, Parts.Kind.GEAR_FLOWER, "it takes cogs, which the garden makes fast")
 	same(offer.brings, Parts.Kind.GIRDER_REED, "and brings a strut: 24 to make and no plant for them")
-	check(Parts.trade(_flowers(7), [3] as Array[int], [0, 0, 1] as Array[int]) == null, "one trade for five sessions")
-	check(Parts.trade(_flowers(10), [3] as Array[int], [0, 0, 1] as Array[int]) != null, "ten sessions earn a second")
-	check(Parts.trade(_flowers(10), none, none) != null, "a trade not taken waits")
+	check(Parts.trade(_flowers(5), [3] as Array[int], [0, 0, 1] as Array[int], none, 5) == null, "it trades once a visit")
+	check(Parts.trade(_flowers(6), none, none) == null, "after the next session it has moved on")
+	check(Parts.trade(_garden([0, 0, 0, 0, 0, -1] as Array[int]), none, none) == null, "even a session given up sends it on")
+	check(Parts.trade(_flowers(10), [3] as Array[int], [0, 0, 1] as Array[int], none, 5) != null, "it calls again after the tenth")
+	check(Parts.trade(_flowers(10), none, none) != null, "whether or not the last offer was taken")
+	check(Parts.trade(_flowers(5), [3] as Array[int], [0, 0, 1] as Array[int]) == null, "a garden from when trades waited, traded on this visit, isn't asked again")
+	check(Parts.trade(_flowers(10), [3] as Array[int], [0, 0, 1] as Array[int], none, 10) == null, "and trades once then too")
 
 
 func test_the_night_train_takes_what_the_garden_can_best_spare() -> void:
@@ -176,8 +180,8 @@ func test_the_night_train_takes_what_the_garden_can_best_spare() -> void:
 	var offer := Parts.trade(mixed, none, none)
 	same(offer.brings, Parts.Kind.PIPE_VINE, "tubing: eight to go from one vine is the longest wait, longer than the gourds' drums")
 	same(offer.gives, Parts.Kind.SAIL_COTTON, "cloth is nearest done; struts and cloth are as fast, and it isn't the lower number that decides")
-	# Six flowers and six reeds: 51 cogs, far more than the ship needs.
-	var spares := _garden([0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2] as Array[int])
+	# Five flowers and five reeds: 35 cogs, far more than the ship needs.
+	var spares := _garden([0, 0, 0, 0, 0, 2, 2, 2, 2, 2] as Array[int])
 	same(Parts.trade(spares, none, none).gives, Parts.Kind.GEAR_FLOWER, "spares go first, though the reeds are as fast")
 	same(Parts.trade(mixed, none, none, [0, 8, 0, 0, 0] as Array[int]).brings, Parts.Kind.PIPE_VINE, "a kind the ship still has room for")
 	check(Parts.trade(mixed, none, none, [0, 12, 0, 0, 0] as Array[int]).brings != Parts.Kind.PIPE_VINE, "never one the ship is full of")
@@ -187,18 +191,18 @@ func test_no_trade_without_sessions_parts_or_gain() -> void:
 	var none: Array[int] = []
 	check(Parts.trade(_flowers(4), none, none) == null, "four sessions earn none")
 	check(Parts.trade(_flowers(5), [8] as Array[int], none) == null, "fewer than three cogs left to give")
-	# Four of each common plant, and both drums brought: nothing is missing.
+	# Five of each common plant, and both drums brought: nothing is missing.
 	var even: Array[int] = []
-	for k in 16:
+	for k in 20:
 		even.append(k % 4)
 	check(Parts.trade(_garden(even), [6] as Array[int], [0, 0, 0, 0, 2] as Array[int]) == null, "a ship with every part needs no trade")
-	# Three reeds and three flowers, the rest of the ship fitted: 12 struts
-	# to go and 9 cogs. Three cogs for a strut would leave the cogs the
-	# last to be done, no sooner than the struts are now.
+	# Three reeds and two flowers, the rest of the ship fitted, and six
+	# struts brought already: 12 struts to go and 8 cogs, four sessions
+	# each. Three struts for a cog would only leave the struts further off.
 	var rest: Array[int] = [0, 12, 0, 20, 2]
-	check(Parts.trade(_garden([2, 2, 2, 0, 0, 0] as Array[int]), none, none, rest) == null, "a trade that wouldn't help isn't offered")
+	check(Parts.trade(_garden([2, 0, 2, 0, 2] as Array[int]), none, [0, 0, 6] as Array[int], rest) == null, "a trade that wouldn't help isn't offered")
 	# A garden of rusted plants made nothing and completed nothing.
-	check(Parts.trade(_garden([-1, -1, -1, -1, -1, -1] as Array[int]), none, none) == null, "nothing made, nothing to trade")
+	check(Parts.trade(_garden([-1, -1, -1, -1, -1] as Array[int]), none, none) == null, "nothing made, nothing to trade")
 
 
 func test_the_plant_most_needed_counts_what_the_train_brought() -> void:

@@ -385,7 +385,7 @@ func test_the_night_train_trades_in_the_break() -> void:
 		sessions += 1
 		while app.break_step() != App.BreakStep.NONE and app.break_step() != App.BreakStep.TRADE:
 			app.take_break_step()
-	same(sessions, 5, "the fifth session earns a trade, offered last")
+	same(sessions, 5, "the train calls after the fifth session, its offer last")
 	same(app.garden.fitted()[Parts.Kind.GEAR_FLOWER], 10, "after the cogs are fitted")
 	same(app.trade().gives, Parts.Kind.GEAR_FLOWER, "the train takes cogs")
 	same(app.trade().brings, Parts.Kind.GIRDER_REED, "and brings a strut")
@@ -409,18 +409,45 @@ func test_the_night_train_trades_in_the_break() -> void:
 	same(app.garden.fitted()[Parts.Kind.GEAR_FLOWER], 12, "fitted")
 
 
-func test_a_trade_can_be_left_and_two_can_wait() -> void:
-	var app := _app(25 * 60, "trade-left")
-	for n in 10:
-		app.start(Parts.Kind.GEAR_FLOWER, n + 1)
+func _session(app: App, n: int, give_up := false) -> void:
+	app.start(Parts.Kind.GEAR_FLOWER, n)
+	if give_up:
+		app.advance(60 * 1000)
+		app.give_up()
+	else:
 		app.advance(25 * 60 * 1000)
-		while app.break_step() != App.BreakStep.NONE and app.break_step() != App.BreakStep.TRADE:
-			app.take_break_step()
-	same(app.break_step(), App.BreakStep.TRADE, "the offer left at the fifth session still stands at the tenth")
+	while app.break_step() != App.BreakStep.NONE and app.break_step() != App.BreakStep.TRADE:
+		app.take_break_step()
+
+
+func test_a_trade_left_is_gone_when_the_next_session_starts() -> void:
+	var app := _app(25 * 60, "trade-left")
+	for n in 5:
+		_session(app, n + 1)
+	same(app.break_step(), App.BreakStep.TRADE, "the train calls after the fifth session")
+	same(App.new(app.options).break_step(), App.BreakStep.TRADE, "and is still there after a new start")
+	_session(app, 6, true)
+	same(app.break_step(), App.BreakStep.NONE, "a session started, even one given up, sends it on")
+	same(App.new(app.options).break_step(), App.BreakStep.NONE, "for good")
+	for n in 4:
+		_session(app, n + 7)
+		same(app.break_step(), App.BreakStep.NONE, "no train until the tenth")
+	_session(app, 11)
+	same(app.break_step(), App.BreakStep.TRADE, "it calls again after the tenth")
 	app.take_break_step()
 	app.take_break_step()
-	same(app.break_step(), App.BreakStep.TRADE, "and the tenth session's with it")
+	same(app.garden.brought(), [0, 0, 1] as Array[int], "one trade")
+	same(app.garden.traded_at(), 10, "marked")
+	same(app.break_step(), App.BreakStep.NONE, "and no second for the offer that was left")
+
+
+func test_the_new_valley_has_its_own_visits() -> void:
+	var app := _app(25 * 60, "trade-valley")
+	for n in 5:
+		_session(app, n + 1)
 	app.take_break_step()
-	app.take_break_step()
-	same(app.garden.brought(), [0, 0, 2] as Array[int], "two trades, two struts")
-	same(app.break_step(), App.BreakStep.NONE, "and no third")
+	same(app.garden.traded_at(), 5, "a trade in the first valley")
+	app.garden.launch()
+	for n in 5:
+		_session(app, n + 6)
+	same(app.break_step(), App.BreakStep.TRADE, "the train calls after the new valley's fifth session")
