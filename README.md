@@ -6,8 +6,29 @@ airship you build inside a big wooden hangar. When it's finished, it flies out
 through the doors and over the pass.
 
 Airship follows [Grove](https://github.com/john-c-houser-tech/grove), a focus
-timer for Omarchy, and keeps its mountain valley. It works as a focus timer
-now; the steampunk scene, the hangar and the airship are still to come.
+timer for Omarchy, and keeps its mountain valley.
+
+## How it plays
+
+Press Space and stay with your work for 25 minutes while the arm builds a
+plant. There is nothing to do during a session. In the break afterwards the
+game asks for one small thing at a time: plant the new plant out in the
+garden, collect the parts the older plants have made, fit them to the
+airship. Skipping a break loses nothing.
+
+- **Five plants** make the five kinds of part: cogs, copper tubing, struts,
+  cloth and boiler drums. You choose which plant the arm builds next.
+- **Giving up** a session leaves the half-built plant to rust in the garden.
+  A later session's break can scrape it clean.
+- **The night train** calls at the station after every fifth session and
+  offers one trade, for that break only.
+- **Visiting airships** bring commissions: plants built a certain way, with
+  no deadline. Each one met hangs a pennant under the hangar door.
+- **The launch:** when every part is fitted, the airship flies out through
+  the door and over the pass, and a new valley begins with a new airship.
+
+Only focus moves the game forward. There are no streaks, no countdowns and
+no notices but the one at a session's end. Press H for help at any time.
 
 ## Install
 
