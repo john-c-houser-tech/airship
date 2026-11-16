@@ -463,3 +463,18 @@ func test_commissions_follow_the_valley() -> void:
 	app.garden.launch()
 	check(app.commissions().open == null, "a new valley starts without one")
 	same(app.commissions().met, 0, "and without pennants")
+
+
+func test_the_visiting_airship_stays_for_the_break() -> void:
+	var app := _app(25 * 60, "visitor")
+	for n in 4:
+		_session(app, n + 1)
+	same(app.visitor(), -1, "no visitor before the first commission")
+	_session(app, 5)
+	same(app.visitor(), 0, "the first commission's airship is moored")
+	same(App.new(app.options).visitor(), 0, "still there after a new start")
+	app.start(Parts.Kind.GEAR_FLOWER, 6)
+	same(app.visitor(), -1, "gone once the next session starts")
+	app.advance(60 * 1000)
+	app.give_up()
+	same(app.visitor(), -1, "and not back when that one is given up")

@@ -56,6 +56,9 @@ class State:
 	var open: Commission = null
 	## How many were met: the pennants won.
 	var met := 0
+	## Whether the open commission came with the valley's newest plant: the
+	## visiting airship is still here, until the next session starts.
+	var fresh := false
 
 
 ## Where the commissions stand for a valley's `plants`, newest first.
@@ -70,12 +73,14 @@ static func state(plants: Array[Garden.Plant]) -> State:
 		if now.open == null:
 			if completed == FIRST_AFTER:
 				now.open = _asked(0, plant)
+				now.fresh = k == 0
 			continue
 		if _meets(plant, now.open):
 			now.open.done += 1
 			if now.open.done >= now.open.count:
 				now.met += 1
 				now.open = _asked(now.met, plant)
+				now.fresh = k == 0
 	return now
 
 

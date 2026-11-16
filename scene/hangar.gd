@@ -52,6 +52,12 @@ const VALLEYS := [
 	[Color(0.36, 0.50, 0.42), Color(0.22, 0.38, 0.28), Color(0.87, 0.69, 0.35)],
 	[Color(0.66, 0.66, 0.48), Color(0.58, 0.58, 0.36), Color(0.63, 0.74, 0.60)],
 ]
+## The colours of visiting airships, and of the pennants their commissions
+## win, by the commission's number, round again after the last.
+const PENNANTS: Array[Color] = [
+	Color(0.78, 0.22, 0.20), Color(0.20, 0.42, 0.72), Color(0.90, 0.72, 0.22),
+	Color(0.24, 0.56, 0.36), Color(0.56, 0.30, 0.62), Color(0.92, 0.48, 0.18),
+]
 const CONCRETE := Color(0.40, 0.29, 0.19)
 
 ## How much of the airship is built, 0 to 1.
@@ -60,6 +66,9 @@ var built := 0.0
 ## one. Each valley has its own range, hills and grass, and its airship its
 ## own cloth; the first is the one the game began in.
 var valley := 0
+## Pennants won from commissions in this valley: hung in a row under the
+## door's lintel, the first won on the left.
+var pennants := 0
 ## The light: the sky's colours, the sun or moon, how bright the day is.
 var daylight: Daylight
 ## The weather outside: cloud, rain, fog and snow.
@@ -183,7 +192,7 @@ func _what_shows() -> String:
 		steps.call(daylight.stars, 10.0), steps.call(daylight.warmth, 20.0),
 		steps.call(conditions.cloud, 40.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
 		steps.call(conditions.snow, 10.0), str(garden_plants), daylight.top.to_html(false).left(5), str(built)] \
-		+ " %d %d %s %d" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather), valley]
+		+ " %d %d %s %d" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather), valley] + " %d" % pennants
 
 
 ## Where the light comes from: the sun across the door's view by day, the
@@ -576,6 +585,7 @@ func _draw_land() -> void:
 	_draw_ground(far_grass, near_grass)
 	_draw_railway(dim)
 	_draw_road(dim)
+	_draw_mast(dim)
 	_draw_station(dim)
 
 
@@ -730,6 +740,25 @@ func _draw_station(dim: float) -> void:
 		var size := _focal / seen.z
 		_glow(at, 9.0 * size, Color(1.0, 0.85, 0.55, 0.5 * night))
 		_disc(at, maxf(0.9 * size, 1.0), _shade(Color(0.9, 0.86, 0.7), dim).lerp(Color(1.0, 0.93, 0.75), night))
+
+
+## The head of the mooring mast, in the valley beyond the railway and left
+## of the road: where a visiting airship ties up by its nose.
+func mast_head() -> Vector3:
+	return Vector3(crossing_x() - 70.0, 96.0, RAILWAY_Z + 130.0)
+
+
+## The mooring mast, which always stands: two iron legs leaning to a head,
+## braced, and a brass cap for an airship's nose.
+func _draw_mast(dim: float) -> void:
+	var head := mast_head()
+	var iron := _shade(Color(0.20, 0.19, 0.19), dim)
+	for foot: float in [-9.0, 9.0]:
+		_beam(Vector3(head.x + foot, 0, head.z), head, 1.2, iron, Color(0, 0, 0, 0))
+	for k in 5:
+		_beam(Vector3(head.x - 9.0 * (1.0 - k / 6.0), head.y * k / 6.0, head.z),
+			Vector3(head.x + 9.0 * (1.0 - (k + 1) / 6.0), head.y * (k + 1) / 6.0, head.z), 0.5, iron, Color(0, 0, 0, 0))
+	_beam(head, head + Vector3(0, 5.0, 0), 1.6, _shade(BRASS, dim), Color(0, 0, 0, 0))
 
 
 ## Where the railway meets the road, across the valley.
@@ -1079,10 +1108,32 @@ func _draw_end_wall() -> void:
 		_beam(Vector3(x0, 0, z - 2), Vector3(x0, DOOR_H, z - 2), 7.0, beam, shine)
 		_beam(Vector3(side * (DOOR_HALF_W + 11), 0, z - 1), Vector3(side * (HALF_W - 4), 95, z - 1), 2.5, beam, shine)
 	_beam(Vector3(-DOOR_HALF_W - 3, DOOR_H, z - 2), Vector3(DOOR_HALF_W + 3, DOOR_H, z - 2), 8.0, beam, shine)
+	_draw_pennants()
 	# Daylight catching the edge of the opening.
 	var edge := Color(1.0, 0.92, 0.75, 0.5)
 	_beam(Vector3(-DOOR_HALF_W + 3.5, 0, z - 3), Vector3(-DOOR_HALF_W + 3.5, DOOR_H - 4, z - 3), 1.0, edge, Color(0, 0, 0, 0))
 	_beam(Vector3(-DOOR_HALF_W + 4, DOOR_H - 4, z - 3), Vector3(DOOR_HALF_W - 4, DOOR_H - 4, z - 3), 1.0, edge, Color(0, 0, 0, 0))
+
+
+## The pennants won, on a line strung under the lintel: each a small
+## triangle in its visitor's colour, in the hangar's light; the newest, if
+## there are more than the door has room for.
+func _draw_pennants() -> void:
+	var room := floori((DOOR_HALF_W * 2.0 - 36.0) / 11.0)
+	var shown := mini(pennants, room)
+	if shown <= 0:
+		return
+	var z := DOOR_Z - 4.0
+	var from := -DOOR_HALF_W + 18.0
+	var top := DOOR_H - 5.0
+	var light := _interior_light(DOOR_Z) * 1.5
+	_beam(Vector3(from - 4.0, top, z), Vector3(from + shown * 11.0 + 2.0, top, z), 0.3,
+		_shade(Color(0.85, 0.80, 0.68), light * 0.8), Color(0, 0, 0, 0))
+	for k in shown:
+		var x := from + k * 11.0
+		var colour := _shade(PENNANTS[(pennants - shown + k) % PENNANTS.size()], light)
+		_flat([Vector3(x, top, z), Vector3(x + 7.0, top, z), Vector3(x + 3.5, top - 10.5, z)], colour)
+		_flat([Vector3(x, top, z), Vector3(x + 2.2, top, z), Vector3(x + 3.5, top - 10.5, z)], _shade(colour, 1.2))
 
 
 func _rib_items() -> Array[Item]:
