@@ -135,3 +135,17 @@ func test_changing_weather_is_announced_in_visible_steps_and_settles_exactly() -
 		check(weather.now().equals(jumped.now()), "settles exactly")
 		return
 	check(false, "no seed changed the weather")
+
+
+func test_a_generator_apart_does_not_follow_the_seeds_own() -> void:
+	# The weather rolls from a seed's own generator; whatever else rolls
+	# from that seed must not keep step with it.
+	var together := 0
+	for seed_value in 400:
+		var own := Random.new(seed_value).unit() < 0.5
+		var apart := Random.apart(seed_value, 0x5_0D5).unit() < 0.5
+		if own == apart:
+			together += 1
+	check(together > 150 and together < 250, "about half agree by chance: %d of 400" % together)
+	same(Random.apart(7, 3).next(), Random.apart(7, 3).next(), "the same every time")
+	check(Random.apart(7, 3).next() != Random.apart(7, 4).next(), "another use, other numbers")

@@ -1,8 +1,9 @@
 extends "res://scene/corner_canvas.gd"
-## The machinery that never moves: the planter, the boiler and the hopper's
-## stand, standing on the hangar's floor and lit by its light. Drawn again
-## only when the hangar is (the window asks); the arm, the plant and the
-## planter's front, which must hide the plant's foot, are workshop.gd.
+## The machinery that never moves: the planter, the boiler and the parts
+## bin, standing on the hangar's floor and lit by its light. Drawn again
+## only when the hangar is (the window asks); the arm, the plant, the
+## planter's front, which must hide the plant's foot, and the bin's front,
+## which hides the gripper as it dips for a part, are workshop.gd.
 
 const GROUND := 640.0
 const GAUGE := Vector2(73, 505)
@@ -14,6 +15,16 @@ const TIMBER := Color(0.42, 0.28, 0.17)
 ## The planter: this tall in flat units, this deep in feet.
 const PLANTER_HIGH := 16.0
 const PLANTER_DEEP := 5.0
+## The parts bin, an open box on the floor: its ends, how tall it stands in
+## flat units and how deep it is in feet.
+const BIN_LEFT := 584.0
+const BIN_RIGHT := 718.0
+const BIN_HIGH := 98.0
+const BIN_DEEP := 5.5
+## The firebox door on the boiler: flat heights, and how far round it reaches.
+const DOOR_TOP := 588.0
+const DOOR_BOTTOM := 622.0
+const DOOR_HALF := 0.72
 
 
 func _draw() -> void:
@@ -22,10 +33,7 @@ func _draw() -> void:
 	_draw_shadow()
 	_draw_planter()
 	_draw_boiler()
-	line(Vector2(610, GROUND), Vector2(618, 520), lit(IRON), 5.0)
-	line(Vector2(672, GROUND), Vector2(664, 520), lit(IRON), 5.0)
-	polygon(PackedVector2Array([Vector2(596, 470), Vector2(686, 470), Vector2(664, 522), Vector2(618, 522)]), lit(BRASS_DARK, _toward))
-	polygon(PackedVector2Array([Vector2(600, 474), Vector2(682, 474), Vector2(678, 484), Vector2(604, 484)]), lit(Color(0.18, 0.13, 0.09)))
+	_draw_bin()
 
 
 ## A soft dark patch on the boards under the corner.
@@ -44,7 +52,7 @@ func _draw_boiler() -> void:
 	cylinder(Vector2(73, GROUND), Vector2(73, 430), 43.0, BRASS)
 	for y: float in [470.0, 540.0, 610.0]:
 		band(73, y, 43.0, lit(BRASS_DARK.darkened(0.3)), lit(BRASS_DARK.darkened(0.4)))
-	rect(Rect2(46, 590, 54, 30), lit(IRON))
+	plate(73, DOOR_TOP, DOOR_BOTTOM, 43.0, DOOR_HALF, lit(IRON, _toward))
 	circle(GAUGE, 17, lit(Color(0.98, 0.95, 0.86), _toward))
 	arc(GAUGE, 17, 0, TAU, lit(BRASS_DARK), 3.0)
 	rect(Rect2(64, 416, 16, 14), lit(BRASS_DARK, Vector3.UP))
@@ -57,3 +65,9 @@ func _draw_boiler() -> void:
 ## of soil (its front, with the brass straps, is drawn by the workshop).
 func _draw_planter() -> void:
 	box(320, 580, PLANTER_HIGH, PLANTER_DEEP, TIMBER, Color(0.22, 0.15, 0.10))
+
+
+## The parts bin: an open brass-bound box on the floor, dark inside (its
+## front is the workshop's, drawn over the arm, which reaches in from above).
+func _draw_bin() -> void:
+	box(BIN_LEFT, BIN_RIGHT, BIN_HIGH, BIN_DEEP, BRASS_DARK, Color(0.10, 0.08, 0.06))

@@ -13,7 +13,9 @@ extends Node2D
 ## --build=SECONDS starts a session that many seconds in; --give-up then gives
 ## it up; --give-up-at=SECONDS and --quit-at=SECONDS do so that long after
 ## start, --log-sounds says when a sound starts and stops, --log-words says
-## the first line shown (bin/test's headless runs), and --log-frames counts
+## the words' main line whenever it changes (bin/test's runs), --press makes
+## keys and clicks at given seconds, --banner has the help banner down,
+## --passing pins a passer-by or the launch at a moment, and --log-frames counts
 ## the frames actually drawn each second (to see what costs CPU). Pictures keep their
 ## plants in a throwaway garden, never the real one. AIRSHIP_DATE,
 ## AIRSHIP_TIME and AIRSHIP_WEATHER pin the sky, and AIRSHIP_LANGUAGE the
@@ -73,6 +75,35 @@ var _falling: Falling
 var _passing := -1
 var _passing_since_ms := 0.0
 var _passing_pinned := -1.0
+# The launched airship's flight: when it began by the window's clock (below
+# zero: none), or the moment a picture pins it at.
+var _launch_since_ms := -1.0
+var _launch_pinned := -1.0
+const FOCUS_CLICK_MS := 300
+# The help banner: whether H has it open, and how far down it has got, 0
+# to 1 (it moves toward open or shut a little each frame, from wherever
+# it is, so a second press mid-way turns it round without a jump).
+const HELP_UNFURL_MS := 450.0
+var _help_open := false
+var _help_at := 0.0
+# Drawn twice: the part beyond the door, and the part still in the hangar.
+var _ship: Hangar
+var _ship_inside: Hangar
+var _gold: ColorRect
+# The valley the flying airship is leaving, and its garden and pennants as
+# they were last shown: they stay in the picture for the flight.
+var _launch_valley := 0
+var _garden_shown: Array[int] = []
+var _pennants_shown := 0
+# --log-words: the words' main line, printed whenever it changes.
+var _log_words := false
+var _last_said := ""
+# --press: keys and clicks to make, each at its second of the window's
+# clock, for the tests: "2:space,3.5:enter,5:click:300:480".
+var _presses: Array[PackedStringArray] = []
+# When the window last took the focus, by the system's clock: the click
+# that brings it forward isn't meant for the game.
+var _focused_ms := -100000
 var _machinery: Machinery
 var _workshop: Workshop
 var _hud: Hud
@@ -99,6 +130,7 @@ func _ready() -> void:
 	_plain_title.call_deferred()
 	var options := Options.from_environment()
 	var build := -1
+	var plant := 0
 	var give_up := false
 	var log_words := false
 	for arg: String in OS.get_cmdline_user_args():
@@ -106,6 +138,9 @@ func _ready() -> void:
 			_shot_path = arg.trim_prefix("--shot=")
 		elif arg == "--check":
 			_check = true
+		elif arg.begins_with("--plant="):
+			# Which blueprint a picture's session builds (with --build).
+			plant = arg.trim_prefix("--plant=").to_int()
 		elif arg.begins_with("--build="):
 			build = arg.trim_prefix("--build=").to_int()
 		elif arg == "--give-up":
@@ -117,8 +152,14 @@ func _ready() -> void:
 		elif arg == "--log-sounds":
 			_log_sounds = true
 		elif arg.begins_with("--passing="):
-			# A passer-by pinned at a moment, for pictures: train:26.
+			# A passer-by, or the launch, pinned at a moment, for pictures:
+			# train:26.
 			var parts := arg.trim_prefix("--passing=").split(":")
+			if parts[0] == "launch":
+				# The launch, pinned the same way: launch:12.
+				_launch_pinned = parts[1].to_float() if parts.size() > 1 else 0.0
+				_launch_since_ms = 0.0
+				continue
 			_passing = Sounds.named(parts[0])
 			_passing_pinned = parts[1].to_float() if parts.size() > 1 else 0.0
 		elif arg == "--log-frames":
@@ -126,6 +167,13 @@ func _ready() -> void:
 			RenderingServer.frame_post_draw.connect(func() -> void: _frames_drawn += 1)
 		elif arg == "--log-words":
 			log_words = true
+		elif arg == "--banner":
+			# The help banner, all the way down, for pictures.
+			_help_open = true
+			_help_at = 1.0
+		elif arg.begins_with("--press="):
+			for press: String in arg.trim_prefix("--press=").split(","):
+				_presses.append(press.split(":"))
 	if (build >= 0 or not _shot_path.is_empty()) and options.garden_path.is_empty():
 		# A picture's plants are make-believe: never in the real garden.
 		var throwaway := OS.get_user_data_dir().path_join("pictures")
@@ -140,11 +188,21 @@ func _ready() -> void:
 	_outside = _picture_of(Hangar.Painting.OUTSIDE)
 	_hangar = _picture_of(Hangar.Painting.INSIDE)
 	_passers = Passers.new()
+	_ship = Hangar.new()
+	_ship.painting = Hangar.Painting.SHIP
+	_ship.beyond_door = true
+	_ship_inside = Hangar.new()
+	_ship_inside.painting = Hangar.Painting.SHIP
 	_falling = Falling.new()
 	_machinery = Machinery.new()
 	_workshop = Workshop.new()
 	_hud = Hud.new()
-	for layer: Node2D in [_pictures[0], _passers, _falling, _pictures[1], _machinery, _workshop, _hud]:
+	# The low sun's gold lies over the hangar and all seen through its door,
+	# the launched airship too, and under the machinery.
+	_gold = ColorRect.new()
+	_gold.size = Vector2(Hangar.SIZE, Hangar.SIZE)
+	_gold.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for layer: CanvasItem in [_pictures[0], _passers, _ship, _falling, _pictures[1], _ship_inside, _gold, _machinery, _workshop, _hud]:
 		add_child(layer)
 	_fit_hangar_picture()
 	get_window().size_changed.connect(_fit_hangar_picture)
@@ -156,13 +214,18 @@ func _ready() -> void:
 	_workshop.time_scale = app.session.seconds() / Workshop.BuildPlan.SESSION
 	_hud.notices_work = notifier.working
 	if build >= 0:
-		app.start(0, 12345)
+		app.start(plant, 12345)
 		app.advance(build * 1000)
 		if give_up:
 			app.give_up()
+	_log_words = log_words
+	get_window().focus_entered.connect(func() -> void: _focused_ms = Time.get_ticks_msec())
 	_show_everything()
 	if log_words:
-		print("says: " + _hud.next_step())
+		_log_line()
+		print("train: " + ("standing" if _passers.standing else "away"))
+		print("visitor: %d" % _passers.visitor)
+		print("pennants: %d" % _hangar.pennants)
 
 
 ## Arch's godot is the editor build, which marks the window's title
@@ -195,7 +258,9 @@ func _process(delta: float) -> void:
 		if language.reload():
 			events.append_array(app.set_language(language.code))
 	_heard(events)
+	_gold.color = app.daylight.warm_tint()
 	_show_passing()
+	_show_launch()
 	# While building, the arm follows the clock every frame (as often as the
 	# pace allows), so it sets off again the moment its rest is over.
 	if app.session.state() == Session.State.BUILDING:
@@ -208,6 +273,10 @@ func _process(delta: float) -> void:
 			print("frames drawn: %d in %.1f s" % [_frames_drawn, _frames_since_ms / 1000.0])
 			_frames_drawn = 0
 			_frames_since_ms = 0.0
+	_show_help(delta)
+	_log_line()
+	while not _presses.is_empty() and _alive_ms >= _presses[0][0].to_float() * 1000.0:
+		_press(_presses.pop_front())
 	if _give_up_at >= 0.0 and _alive_ms >= _give_up_at * 1000.0:
 		_give_up_at = -1.0
 		_heard(app.give_up())
@@ -223,6 +292,26 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		if Time.get_ticks_msec() - _focused_ms < FOCUS_CLICK_MS:
+			# The click that brought the window forward.
+			return
+		if _help_open:
+			# The banner hangs over the door and the airship: a click
+			# rolls it up, and is no step of the break.
+			_help_open = false
+			_pace()
+			return
+		# The break's steps: the garden, and the railway the night train
+		# trades from, are what shows through the door, the airship
+		# everything inside the hangar.
+		var through_door := Geometry2D.is_point_in_polygon(click.position, _hangar.door_outline())
+		var step := app.break_step()
+		var wants_garden := step != App.BreakStep.FIT
+		if step != App.BreakStep.NONE and step != App.BreakStep.LAUNCH and through_door == wants_garden:
+			_heard(app.take_break_step())
+		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
@@ -231,29 +320,96 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key.keycode == KEY_M:
 		_heard(app.set_muted(not app.muted))
 		return
+	if key.keycode == KEY_H:
+		# The help banner unfurls, or rolls up again.
+		_help_open = not _help_open
+		_pace()
+		return
+	if key.keycode == KEY_ESCAPE and _help_open:
+		_help_open = false
+		_pace()
+		return
+	# The launch can't be undone, so it has a key of its own: neither the
+	# Enter nor the click that fitted the last parts sets it off. Nor can a
+	# trade, which has T (or a click through the door, away from the
+	# airship just clicked).
+	var step := app.break_step()
+	var own_key := KEY_L if step == App.BreakStep.LAUNCH else KEY_T if step == App.BreakStep.TRADE else KEY_NONE
+	if (own_key != KEY_NONE and key.keycode == own_key) or ((key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER) and own_key == KEY_NONE):
+		_heard(app.take_break_step())
+		return
+	if key.keycode == KEY_LEFT or key.keycode == KEY_RIGHT:
+		_heard(app.choose(-1 if key.keycode == KEY_LEFT else 1))
+		return
 	if key.keycode != KEY_SPACE:
 		return
 	if app.session.state() == Session.State.BUILDING:
 		_heard(app.give_up())
 	else:
-		_heard(app.start(0, randi_range(1, Session.SEED_LIMIT)))
+		_heard(app.start(app.blueprint(), randi_range(1, Session.SEED_LIMIT)))
 	_pace()
+
+
+## Makes a key press or a click as if it came from the desktop (--press).
+func _press(press: PackedStringArray) -> void:
+	if press.size() == 4 and press[1] == "click":
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = true
+		click.position = Vector2(press[2].to_float(), press[3].to_float())
+		_unhandled_input(click)
+	elif press.size() == 2 and OS.find_keycode_from_string(press[1]) != KEY_NONE:
+		var key := InputEventKey.new()
+		key.keycode = OS.find_keycode_from_string(press[1])
+		key.pressed = true
+		_unhandled_input(key)
+	else:
+		printerr("--press: not a key or a click: %s" % ":".join(press))
+	# Said at once: two presses in one slow frame each leave their line.
+	_log_line()
 
 
 ## Shows what the core says changed.
 func _heard(events: Array[int]) -> void:
+	if App.Event.LAUNCHED in events:
+		# Known before anything else is shown: the valley being left stays
+		# in the picture while its airship flies, its garden, its pennants
+		# and a moored visitor with it.
+		_launch_since_ms = _alive_ms
+		_launch_pinned = -1.0
+		_launch_valley = maxi(app.garden.valley() - 1, 0)
 	for event: int in events:
 		match event:
 			App.Event.STATE, App.Event.PROGRESS:
 				if event == App.Event.STATE:
 					# Rain and snow move while the arm works, and are still otherwise.
 					_show_sky()
+				_workshop.show_blueprint(app.session.blueprint())
+				_workshop.planted = not app.on_planter()
+				_show_break()
 				_workshop.show_session(app.session.state(), app.session.progress())
 				_hud.state = app.session.state()
 				_hud.remaining = app.session.remaining()
 				_hud.queue_redraw()
 			App.Event.WEATHER, App.Event.LIGHT, App.Event.GARDEN:
 				_show_sky()
+				if event == App.Event.GARDEN:
+					# A new plant changes which one the ship needs next.
+					_hud.next_plant = Parts.kind_of(app.blueprint())
+					_hud.commissions = app.commissions()
+					_hud.queue_redraw()
+			App.Event.BREAK:
+				_workshop.planted = not app.on_planter()
+				_workshop.queue_redraw()
+				_show_break()
+			App.Event.LAUNCHED:
+				_show_sky()
+				if not app.muted and _shot_path.is_empty():
+					_play(Sounds.Kind.AIRSHIP)
+				_pace()
+			App.Event.BLUEPRINT:
+				_hud.next_plant = Parts.kind_of(app.blueprint())
+				_hud.queue_redraw()
 			App.Event.GARDEN_PROBLEM:
 				_hud.garden_problem = app.garden.problem()
 				_hud.save_error = app.garden.save_error
@@ -288,22 +444,58 @@ func _heard(events: Array[int]) -> void:
 					_hud.queue_redraw()
 
 
+## Tells the words what the break asks for next.
+func _show_break() -> void:
+	_hud.break_step = app.break_step()
+	_hud.new_plant = Parts.kind_of(app.session.blueprint())
+	_hud.commissions = app.commissions()
+	var offer := app.trade()
+	if not _leaving():
+		# The airship that brought a commission stays moored for the break,
+		# and the train stands at the station for as long as it offers a
+		# trade.
+		_passers.show_visitor(app.visitor())
+		_passers.show_standing(offer != null)
+	if offer != null:
+		_hud.trade_gives = offer.gives
+		_hud.trade_brings = offer.brings
+	_hud.queue_redraw()
+
+
 func _show_everything() -> void:
-	_heard([App.Event.STATE, App.Event.GARDEN_PROBLEM, App.Event.LANGUAGE])
+	_heard([App.Event.STATE, App.Event.BLUEPRINT, App.Event.GARDEN_PROBLEM, App.Event.LANGUAGE])
 	_hud.muted = app.muted
 	_show_sky()
 	_pace()
 
 
 ## The hangar and what's seen through its door: drawn again only when the
-## light, the weather or the garden (and so the airship) changes.
+## light, the weather, the garden (and so the airship) or the valley changes.
 func _show_sky() -> void:
-	var plants := app.garden.built()
+	# The garden's plants, oldest first: the kinds of those that stand, and
+	# the rusted ones as they seized.
+	var plants: Array[int] = []
+	for plant: Garden.Plant in app.garden.valley_plants():
+		var kind := Parts.kind_of(plant.blueprint)
+		plants.append(kind if Parts.stands(plant) else Hangar.rusted(kind, plant.progress))
+	plants.reverse()
+	if not app.planted():
+		# The newest still stands on the planter.
+		plants.pop_back()
+	if _leaving():
+		plants = _garden_shown
+	else:
+		_garden_shown = plants
+		_pennants_shown = app.commissions().met
 	var moving := app.session.state() == Session.State.BUILDING
 	var now := app.weather.now()
 	_falling.show_weather(now.rain, now.snow, moving, 0.35 + 0.65 * app.daylight.ambient)
-	_outside.show_world(app.daylight, now, app.airship_progress(), plants, moving)
-	if _hangar.show_world(app.daylight, now, app.airship_progress(), plants, moving):
+	var built := app.airship_progress()
+	_outside.valley = _valley_shown()
+	_hangar.valley = _valley_shown()
+	_hangar.pennants = _pennants_shown
+	_outside.show_world(app.daylight, now, built, plants, moving)
+	if _hangar.show_world(app.daylight, now, built, plants, moving):
 		for paint: SubViewport in _paints:
 			paint.render_target_update_mode = SubViewport.UPDATE_ONCE
 		_machinery.queue_redraw()
@@ -390,11 +582,71 @@ func _show_passing() -> void:
 	var seconds := (_alive_ms - _passing_since_ms) / 1000.0
 	if _passing_pinned >= 0.0:
 		seconds = _passing_pinned
-	elif _player.playing and _player.stream == load(Sounds.FILES[_passing]):
+	elif _launch_since_ms < 0.0 and _player.playing and _player.stream == load(Sounds.FILES[_passing]):
 		seconds = _player.get_playback_position()
 	_passers.show_passing(_passing, seconds)
 	if not _passers.passing():
 		_stop_passing()
+
+
+## Moves the help banner on toward open or shut, drawn smoothly while it
+## moves. A frame's step is capped: the first frame after the key comes
+## with the whole idle wait behind it, and would jump.
+func _show_help(delta: float) -> void:
+	var target := 1.0 if _help_open else 0.0
+	if _help_at == target and _hud.unfurled == target:
+		return
+	_help_at = move_toward(_help_at, target, minf(delta, 0.05) * 1000.0 / HELP_UNFURL_MS)
+	_hud.unfurled = _help_at
+	_hud.queue_redraw()
+	if _help_at == target:
+		_pace()
+
+
+## Whether the help banner is on its way down or up.
+func _help_moving() -> bool:
+	return _help_at != (1.0 if _help_open else 0.0)
+
+
+## Whether the launched airship is still flying out of the valley it leaves.
+func _leaving() -> bool:
+	return _launch_since_ms >= 0.0 and _launch_pinned < 0.0
+
+
+## The valley in the picture: the garden's, but the one just left for as
+## long as its airship is still flying out of it.
+func _valley_shown() -> int:
+	return _launch_valley if _leaving() else app.garden.valley()
+
+
+## With --log-words: prints the words' main line whenever it changes.
+func _log_line() -> void:
+	if not _log_words:
+		return
+	var line := _hud.next_step()
+	if line != _last_said:
+		_last_said = line
+		print("says: " + line)
+
+
+## The launched airship's flight, drawn every frame while it lasts: the
+## part still in the hangar over its inside, the part beyond the door
+## under it, so the door frames it.
+func _show_launch() -> void:
+	if _launch_since_ms < 0.0:
+		return
+	var seconds := _launch_pinned if _launch_pinned >= 0.0 else (_alive_ms - _launch_since_ms) / 1000.0
+	_ship.valley = _valley_shown()
+	_ship_inside.valley = _valley_shown()
+	_ship.show_launch(app.daylight, app.weather.now(), seconds)
+	if seconds <= Hangar.LAUNCH_OUT_SECONDS or _ship_inside.launch_seconds >= 0.0:
+		_ship_inside.show_launch(app.daylight, app.weather.now(), seconds)
+	if _ship.launch_seconds < 0.0:
+		_launch_since_ms = -1.0
+		# The airship is gone over the pass: the new valley.
+		_show_sky()
+		_show_break()
+		_pace()
 
 
 func _stop_passing() -> void:
@@ -411,7 +663,7 @@ func _pace() -> void:
 	var building := app.session.state() == Session.State.BUILDING
 	var raining := building and app.weather.now().rain > FALLING_THRESHOLD
 	var snowing := building and app.weather.now().snow > FALLING_THRESHOLD
-	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0) or raining:
+	if (building and _workshop.resting_for() < STEAM_FADE_SECONDS) or (_passing >= 0 and _passing_pinned < 0.0) or (_launch_since_ms >= 0.0 and _launch_pinned < 0.0) or raining or _help_moving():
 		Engine.max_fps = WORKING_FPS
 		OS.low_processor_usage_mode_sleep_usec = DEFAULT_SLEEP_USEC
 	elif building:

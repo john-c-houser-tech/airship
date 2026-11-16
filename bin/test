@@ -6,7 +6,10 @@
 #   3. run the main scene headless for a few frames, so every script parses,
 #      and play a train (then a silent one) headless
 #   4. export the package's data file and run it from outside the project
-#   5. draw a frame of a session under xvfb-run, save it and check it
+#   5. draw a frame of a session under xvfb-run, save it and check it, and
+#      a frame of the launch and one of the train waiting to trade
+#   6. press the keys and click, off the desktop, through a break, a
+#      session and a launch
 # Godot keeps going after most errors, so any ERROR or WARNING line in its
 # output fails the run, except the one below.
 set -eu
@@ -76,7 +79,7 @@ mkdir -p "$out/elsewhere"
 run packed sh -c "cd '$out/elsewhere' && AIRSHIP_LANGUAGE=de AIRSHIP_SOUND_TEST=train AIRSHIP_WEATHER=clear \
     timeout 60 godot --headless --main-pack ../airship.pck --audio-driver Dummy \
     -- --log-words --build=0 --give-up-at=5 --quit-at=8 --log-sounds"
-expected="says: Wird gebaut. Bleib bei deiner Arbeit; die Leertaste nur zum Aufgeben. sound: train sound: stopped "
+expected="says: Wird gebaut. Bleib bei deiner Arbeit; die Leertaste nur zum Aufgeben. sound: train says: Dem Rost überlassen. Drück die Leertaste, um neu anzufangen. sound: stopped "
 if [ "$(grep -E '^(says|sound):' "$out/packed.log" | tr '\n' ' ')" != "$expected" ]; then
     cat "$out/packed.log"
     echo "bin/test: packed: the data file didn't speak German and play the train"
@@ -108,4 +111,81 @@ fi
 run frame env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
     timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
     -- --build=600 --check --shot="$PWD/$out/frame.png"
+# The launch, pinned as the airship passes the door: both halves are drawn.
+run launch env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --passing=launch:8 --shot="$PWD/$out/launch.png"
+# A garden five sessions old, so the night train offers a trade and an
+# airship brings the first commission: the train stands at the station and
+# the airship is moored (the words still ask for the parts to be collected first).
+cat >"$out/trade.json" <<'GARDEN'
+{"version": 1, "plants": [{"blueprint": 2, "seed": 1, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-10T10:00:00", "minutes": 25}, {"blueprint": 3, "seed": 2, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-11T10:00:00", "minutes": 25}, {"blueprint": 2, "seed": 3, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-12T10:00:00", "minutes": 25}, {"blueprint": 3, "seed": 4, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-13T10:00:00", "minutes": 25}, {"blueprint": 0, "seed": 5, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-14T10:00:00", "minutes": 25}]}
+GARDEN
+run trade env -u XMODIFIERS AIRSHIP_GARDEN="$PWD/$out/trade.json" AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=23:30 AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --log-words --shot="$PWD/$out/trade.png"
+if ! grep -qx 'train: standing' "$out/trade.log" || ! grep -qx 'visitor: 0' "$out/trade.log"; then
+    cat "$out/trade.log"
+    echo "bin/test: trade: the train isn't standing at the station, or the visiting airship isn't moored"
+    exit 1
+fi
+# A garden where commissions have been met, at night: pennants hang under
+# the door's lintel, and the help banner is down, at its fullest. Five sessions, then forty more of the four quick
+# plants in turn, in weather that changes every fourth.
+{
+    printf '{"version":1,"plants":['
+    n=0
+    while [ "$n" -lt 45 ]; do
+        weather=fog
+        if [ "$n" -ge 5 ]; then
+            case $(( (n / 4) % 3 )) in 0) weather=cloudy ;; 1) weather=clear ;; *) weather=rain ;; esac
+        fi
+        [ "$n" -gt 0 ] && printf ','
+        printf '{"blueprint":%d,"seed":%d,"outcome":"built","season":"spring","weather":"%s","progress":1.0,"when":"2026-04-%02dT10:00:00","minutes":25}' \
+            $(( n % 4 )) $(( n + 1 )) "$weather" $(( n / 2 + 1 ))
+        n=$(( n + 1 ))
+    done
+    printf ']}\n'
+} >"$out/pennants.json"
+run pennants env -u XMODIFIERS AIRSHIP_GARDEN="$PWD/$out/pennants.json" AIRSHIP_DATE=2026-04-28 AIRSHIP_TIME=23:30 AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --log-words --banner --shot="$PWD/$out/pennants.png"
+if ! grep -qE '^pennants: [1-9]' "$out/pennants.log"; then
+    cat "$out/pennants.log"
+    echo "bin/test: pennants: no commission was met, so no pennant was drawn"
+    exit 1
+fi
+# The keys and the clicks, as the window hears them (--press makes them),
+# on gardens bin/try makes: at the trade, Enter doesn't trade and a click
+# through the door does; a click on the airship fits; Space builds; Enter
+# plants, collects and fits. At the launch, neither Enter, a click nor T
+# launches, and L does.
+said() { # name, then the first words of each line the window must say, in order
+    name=$1
+    shift
+    got=$(grep '^says: ' "$out/$name.log" | cut -c7-22 | tr '\n' '|')
+    want=$(printf '%s|' "$@")
+    if [ "$got" != "$want" ]; then
+        cat "$out/$name.log"
+        echo "bin/test: $name: the window said: $got"
+        echo "bin/test: $name: expected:        $want"
+        exit 1
+    fi
+}
+for stage in trade launch; do
+    run "try-$stage" godot --headless --path . --script res://tools/try_garden.gd -- "$stage" "$PWD/$out/try-$stage.json"
+done
+run keys env -u XMODIFIERS AIRSHIP_SECONDS=4 AIRSHIP_GARDEN="$PWD/$out/try-trade.json" AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --log-words --press=1:enter,1.5:click:300:480,2.5:click:600:300,3:space,10:enter,10.5:enter,11:enter --quit-at=13
+said keys "The night train " "You have parts f" "Press Space to s" "Building. Stay w" "Built. Click the" "Your plants have" "You have parts f" "Built. Take a fi"
+# (Silent: Godot complains at exit when a sound is cut off mid-flight.)
+run launch-keys env -u XMODIFIERS AIRSHIP_SECONDS=4 AIRSHIP_SOUND_VOLUME=0 AIRSHIP_GARDEN="$PWD/$out/try-launch.json" AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --log-words --press=1:enter,1.5:click:300:480,2:click:600:300,2.5:t,3:l --quit-at=6
+said launch-keys "The airship is f" "Press Space to s"
+if ! grep -q '"valley": 1' "$out/try-launch.json"; then
+    echo "bin/test: launch-keys: L didn't launch the airship"
+    exit 1
+fi
 echo "bin/test: passed; the frame is $out/frame.png"

@@ -22,23 +22,61 @@ archived), whose rules and tests are the spec for Airship's rules.
 - `scene/` draws. `hangar.gd` is the scene decided at gate B and after the
   milestone 5 mock-ups: inside the hangar beside the airship's front third,
   looking out the big door. It takes the daylight, the weather, the
-  airship's progress (`App.airship_progress()`, 40 built plants a ship) and
-  the garden's count from the core, and draws only when they change, into
+  airship's progress (`App.airship_progress()`, from the parts the garden has made) and
+  the garden's plants (the kinds that stand, and those left to rust) from the core, and draws only when they change, into
   two cached pictures (replaying it each frame cost 69% of a core): the
   outside (sky, land, railway) and the inside (the garden, the hangar and
   the airship, clear where the door shows the outside). `passers.gd` draws
   between them: the night train on the railway and the airship crossing the
   sky by day, each while its sound plays, every frame from how far into the
-  sound it is; and `falling.gd`, rain and snow moving while the arm works
+  sound it is (and, as still pictures, a visiting airship moored at the valley's mast
+  for the break it brings a commission in, and the train standing at the station
+  past the crossing,
+  which `hangar.gd` draws in the outside picture, while it offers a
+  trade); and `falling.gd`, rain and snow moving while the arm works
   (still, painted into the inside picture, between sessions). The
   workshop corner stands on the hangar's floor in the left foreground, seen
   through the same camera (`corner_canvas.gd`): `machinery.gd` (boiler,
-  planter, hopper) is drawn when the hangar is, `workshop.gd` (the arm and
-  plant) every frame while the arm works. `hud.gd` holds the words.
+  planter, parts bin) is drawn when the hangar is, `workshop.gd` (the arm and
+  plant) every frame while the arm works. `hud.gd` holds the words:
+  almost none until H unfurls the help banner (what is happening, the
+  next plant, the commission and the keys that do something now).
 - `core/` holds the rules, which draw nothing and run no timers: `app.gd`
   ties them together and returns events saying what changed;
   `options.gd` is the only reader of the environment (the `AIRSHIP_*`
-  test knobs). Grove's `src/*.rs` rules and their tests are the spec.
+  test knobs). `parts.gd` is the economy: five kinds of plant by blueprint,
+  each making its part once per later completed session, and the parts an
+  airship needs; parts made are worked out from the garden's plants, and
+  the garden file keeps the parts fitted, those traded, which rusted plants
+  were scraped clean, and the valley (airships launched; each plant
+  remembers its own). The break after a session is `App.break_step()`:
+  plant, scrape, collect and fit, one click or Enter each, then a trade
+  if one is offered; once every part
+  is fitted the launch is offered, and only the key L sets it off (it
+  can't be undone).
+  A launch starts a new valley: a fresh garden and airship, the old
+  plants kept as history. The flight is the hangar's own ship, painted
+  alone (`Hangar.Painting.SHIP`) every frame while it lasts (30 a second),
+  by two layers split at the door: the part still inside over the hangar's
+  picture, the part beyond the door under it.
+  Each valley has its own range, hills, grass and cloth, worked out from
+  its number in `hangar.gd` (`valley`, `VALLEYS`, `_roll`); the first is
+  as it always was.
+  The night train trades in the break (`Parts.trade`): after every fifth
+  completed session it calls, for that break only, with one trade of three parts the garden can best
+  spare for one it is slowest to make (a boiler drum), offered last in
+  the break and only on T or a click through the door, so it can be left; the garden file keeps what was given and brought
+  and the sessions completed at the last trade (version 4 from the first
+  trade).
+  `commissions.gd`: a visiting airship asks for plants built a certain
+  way (kind and weather), one commission at a time and no deadline;
+  each met wins a pennant, hung under the door's lintel (`hangar.gd`).
+  The airship that brings one is moored outside for that break
+  (`passers.gd`). Nothing is saved for them: it all follows from the
+  valley's plants.
+  Blueprints unlock as the airship grows; Left and Right choose the next
+  plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
+  Grove's `src/*.rs` rules and their tests are the spec.
 - `tests/test_*.gd` are the unit tests: each extends `TestCase`
   (`tests/test_case.gd`) and each `test_*` method is one test.
   `tests/run.gd` runs them all and exits 1 on any failure.
@@ -55,6 +93,13 @@ archived), whose rules and tests are the spec for Airship's rules.
   speaks up when Godot is upgraded. `bin/install` builds and installs it.
   `pkgver` and `config/version` in `project.godot` must match (bin/test
   checks), and bin/test runs the exported file in German with a train.
+- `bin/try [stage] [seconds]` is for trying the game by hand: short
+  sessions in a scratch garden (`~/.cache/airship-try/`) that
+  `tools/try_garden.gd` plays up to a stage through the core (`new`,
+  `train`, `trade`, `pennant`, `launch`, `valley`; `again` carries on).
+  The window's `--press=2:space,3:click:300:480` makes keys and clicks at
+  those seconds, and `--log-words` prints the words' main line whenever
+  it changes; `bin/test` uses both to check the keys off the desktop.
 - `prototypes/` holds the throwaway tests of milestones 1 to 3.
 - `bin/test` runs every check. It never opens a window on the desktop: it runs
   headless, and draws frames under `xvfb-run` (package `xorg-server-xvfb`).

@@ -35,21 +35,47 @@ const SHIP_ORIGIN := Vector3(40, 92, 330)
 # Light comes in through the doors, from the sun low on the left.
 
 const BRASS := Color(0.80, 0.58, 0.26)
+const RUST := Color(0.55, 0.30, 0.18)
+## In the garden's list, a rusted plant is this and up (see rusted()).
+const RUSTED := 1000
 const COPPER := Color(0.74, 0.42, 0.25)
 const ALLOY := Color(0.70, 0.72, 0.74)
 const CANVAS := Color(0.88, 0.83, 0.70)
 const WOOD := Color(0.36, 0.24, 0.15)
 const WOOD_DARK := Color(0.17, 0.11, 0.07)
+## Each valley's far grass, near grass and airship cloth, round again after
+## the last.
+const VALLEYS := [
+	[Color(0.46, 0.58, 0.40), Color(0.36, 0.50, 0.28), CANVAS],
+	[Color(0.62, 0.58, 0.36), Color(0.55, 0.47, 0.24), Color(0.74, 0.38, 0.29)],
+	[Color(0.52, 0.52, 0.54), Color(0.45, 0.39, 0.47), Color(0.55, 0.65, 0.77)],
+	[Color(0.36, 0.50, 0.42), Color(0.22, 0.38, 0.28), Color(0.87, 0.69, 0.35)],
+	[Color(0.66, 0.66, 0.48), Color(0.58, 0.58, 0.36), Color(0.63, 0.74, 0.60)],
+]
+## The colours of visiting airships, and of the pennants their commissions
+## win, by the commission's number, round again after the last.
+const PENNANTS: Array[Color] = [
+	Color(0.78, 0.22, 0.20), Color(0.20, 0.42, 0.72), Color(0.90, 0.72, 0.22),
+	Color(0.24, 0.56, 0.36), Color(0.56, 0.30, 0.62), Color(0.92, 0.48, 0.18),
+]
 const CONCRETE := Color(0.40, 0.29, 0.19)
 
 ## How much of the airship is built, 0 to 1.
 var built := 0.0
+## Which valley this is: how many airships have been launched before this
+## one. Each valley has its own range, hills and grass, and its airship its
+## own cloth; the first is the one the game began in.
+var valley := 0
+## Pennants won from commissions in this valley: hung in a row under the
+## door's lintel, the first won on the left.
+var pennants := 0
 ## The light: the sky's colours, the sun or moon, how bright the day is.
 var daylight: Daylight
 ## The weather outside: cloud, rain, fog and snow.
 var conditions := Weather.Conditions.new()
-## How many finished plants stand in the garden outside (up to six show).
-var garden_plants := 0
+## The garden's plants, oldest first: the kind (Parts.Kind) of each that
+## stands, and rusted() for each left to rust.
+var garden_plants: Array[int] = []
 ## While the arm works, rain and snow are drawn moving (scene/falling.gd)
 ## instead of still here.
 var moving_weather := false
@@ -60,20 +86,36 @@ var moving_weather := false
 ## frame, the ship, the garden and the weather. ALL paints both, in order.
 ## While the arm works, rain and snow move instead (scene/falling.gd, also
 ## between the pictures), and the inside paints them only when still.
-enum Painting { ALL, OUTSIDE, INSIDE }
+enum Painting { ALL, OUTSIDE, INSIDE, SHIP }
 var painting := Painting.ALL
 ## The railway across the valley: this far beyond the door.
 const RAILWAY_Z := DOOR_Z + 350.0
+## Where the near hills start to rise beyond the door, and where they crest.
+const HILLS_FOOT := 520.0
+const HILLS_CREST := 2400.0
 # How strongly the sun shines in, 0 to 1: up, high enough, not clouded over.
 var _sun := 1.0
 # How bright the day is outside, 0 (night) to 1, from the daylight.
 var _day := 1.0
 # How much the moon lights things, 0 to a quarter.
 var _moon := 0.0
-## Shows the finished ship outside, climbing towards the pass.
-## The finished airship out over the valley (milestone 7 sets this; the
-## pose, the blurred propellers and the smoke trail are ready for it).
-var launched := false
+## The SHIP painting is the finished airship alone, in flight: propellers
+## spinning, funnel and engines trailing smoke and steam. `launch_seconds`
+## is how far into its launch it is (below zero: nothing is drawn): out of
+## its cradle and through the door, then round toward the road and up over
+## the pass. The window draws it every frame of the flight, over the inside
+## picture while it is in the hangar and under it once it is out.
+var launch_seconds := -1.0
+## The ship is too big to draw as one thing while it passes the door: the
+## window draws it twice, the part still in the hangar over the inside
+## picture and the part beyond the door under it, where the door's frame
+## hides what it should. This says which part this painting is.
+var beyond_door := false
+## How long the launch takes, and how long the ship takes to clear the door.
+const LAUNCH_SECONDS := 36.0
+const LAUNCH_OUT_SECONDS := 10.0
+# How far out of the hangar's light the flying ship is, 0 to 1.
+var _afield := 0.0
 
 var _cam := Vector3(-95, 20, 300)
 var _yaw := deg_to_rad(19.0)
@@ -120,10 +162,10 @@ func _ready() -> void:
 	_plan_build()
 
 
-## Shows the light and weather, how far the airship is built, and how many
-## plants stand in the garden. Draws again only for these, and says whether
+## Shows the light and weather, how far the airship is built, and the
+## garden's plants, those that stand and those left to rust. Draws again only for these, and says whether
 ## it will (the window keeps the hangar as a picture, remade only then).
-func show_world(daylight_: Daylight, conditions_: Weather.Conditions, built_: float, garden_plants_: int, moving := false) -> bool:
+func show_world(daylight_: Daylight, conditions_: Weather.Conditions, built_: float, garden_plants_: Array[int], moving := false) -> bool:
 	moving_weather = moving
 	daylight = daylight_
 	conditions = conditions_
@@ -146,11 +188,11 @@ var _shown := ""
 
 func _what_shows() -> String:
 	var steps := func(v: float, n: float) -> int: return roundi(v * n)
-	return "%d %d %d %d %d %d %d %d %d %s %s" % [steps.call(_day, 40.0), steps.call(_sun, 20.0),
+	return "%d %d %d %d %d %d %d %d %s %s %s" % [steps.call(_day, 40.0), steps.call(_sun, 20.0),
 		steps.call(daylight.stars, 10.0), steps.call(daylight.warmth, 20.0),
-		steps.call(conditions.cloud, 10.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
-		steps.call(conditions.snow, 10.0), garden_plants, daylight.top.to_html(false).left(5), str(built)] \
-		+ " %d %d %s" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather)]
+		steps.call(conditions.cloud, 40.0), steps.call(conditions.rain, 10.0), steps.call(conditions.fog, 10.0),
+		steps.call(conditions.snow, 10.0), str(garden_plants), daylight.top.to_html(false).left(5), str(built)] \
+		+ " %d %d %s %d" % [steps.call(daylight.sun_x, 40.0), steps.call(daylight.moon_x, 40.0), str(moving_weather), valley] + " %d" % pennants
 
 
 ## Where the light comes from: the sun across the door's view by day, the
@@ -281,6 +323,8 @@ func _same(colour: Color, n: int) -> PackedColorArray:
 	return cols
 
 
+## A colour under more or less light, as solid as it was (Color * float
+## would thin it, and the stars would shine through the mountains).
 func _shade(base: Color, f: float) -> Color:
 	return Color(base.r * f, base.g * f, base.b * f, base.a)
 
@@ -290,21 +334,32 @@ func _shade(base: Color, f: float) -> Color:
 func _draw() -> void:
 	if daylight == null:
 		return
-	if launched:
-		_ship_basis = Basis(Vector3.UP, deg_to_rad(64.0)) * Basis(Vector3.RIGHT, deg_to_rad(-7.0))
-		_ship_origin = Vector3(150, 330, DOOR_Z + 1500)
-	else:
-		_ship_basis = Basis.IDENTITY
-		_ship_origin = SHIP_ORIGIN
+	_ship_basis = Basis.IDENTITY
+	_ship_origin = SHIP_ORIGIN
+	_afield = 0.0
+	if painting == Painting.SHIP:
+		if launch_seconds < 0.0:
+			return
+		if not beyond_door and launch_seconds > LAUNCH_OUT_SECONDS:
+			# Nothing is left in the hangar.
+			return
+		_fly(launch_seconds)
+		var nose := _ship_origin.z + SHIP_L * SHIP_SCALE * 0.5
+		if beyond_door and launch_seconds < LAUNCH_OUT_SECONDS and nose + 60.0 < DOOR_Z:
+			# Nothing has reached the door yet.
+			return
+		var flying := _ship_items(1.0)
+		flying.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
+		# The door's plane as the eye measures depth, on the ship's line.
+		var door := _depth(Vector3(_ship_origin.x, _ship_origin.y, DOOR_Z))
+		for item: Item in flying:
+			if (item.depth > door) == beyond_door:
+				item.draw.call()
+		return
 	if painting != Painting.INSIDE:
 		_draw_sky()
 		_draw_land()
 		_draw_clouds()
-		if launched:
-			var outside := _ship_items(1.0)
-			outside.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
-			for item: Item in outside:
-				item.draw.call()
 	if painting == Painting.OUTSIDE:
 		return
 	# The garden and the weather are nearer than the railway, so a passing
@@ -317,13 +372,61 @@ func _draw() -> void:
 	var items: Array[Item] = []
 	items.append_array(_rib_items())
 	items.append_array(_cradle_items())
-	if not launched:
-		items.append_array(_ship_items(built))
+	items.append_array(_ship_items(built))
 	items.sort_custom(func(a: Item, b: Item) -> bool: return a.depth > b.depth)
 	for item: Item in items:
 		item.draw.call()
-	# The low sun's gold over everything.
-	draw_rect(Rect2(0, 0, SIZE, SIZE), daylight.warm_tint())
+	# The low sun's gold over everything. The window lays it over the inside
+	# picture itself, so that it lies over the launched airship too.
+	if painting == Painting.ALL:
+		draw_rect(Rect2(0, 0, SIZE, SIZE), daylight.warm_tint())
+
+
+## Where the launched airship is `seconds` into its flight. It gathers way
+## down the hangar and out through the door, tail and all, then holds that
+## speed: round onto the line of the road, nose up, and over the pass.
+func _fly(seconds: float) -> void:
+	var out := Vector3(SHIP_ORIGIN.x * 0.3, SHIP_ORIGIN.y, DOOR_Z + SHIP_L * SHIP_SCALE * 0.5 + 40.0)
+	var run := out.z - SHIP_ORIGIN.z
+	var speed := 2.0 * run / LAUNCH_OUT_SECONDS
+	if seconds <= LAUNCH_OUT_SECONDS:
+		var k := seconds / LAUNCH_OUT_SECONDS
+		_ship_origin = SHIP_ORIGIN.lerp(out, k * k)
+		_afield = smoothstep(0.55, 1.0, k * k)
+		return
+	_afield = 1.0
+	var crest_z := DOOR_Z + HILLS_CREST
+	var over := Vector3(_road_x(crest_z) + 60.0, _ground_at(_road_x(crest_z), crest_z) + 520.0, crest_z + 900.0)
+	var far := clampf((seconds - LAUNCH_OUT_SECONDS) * speed / out.distance_to(over), 0.0, 1.0)
+	# The turn and the climb come on gently and ease off.
+	var bend := smoothstep(0.0, 0.45, far)
+	var straight := out + Vector3(0, 0, 1) * (far * out.distance_to(over))
+	_ship_origin = straight.lerp(out.lerp(over, far), bend)
+	var heading := atan2(over.x - out.x, over.z - out.z)
+	var climb := atan2(over.y - out.y, Vector2(over.x - out.x, over.z - out.z).length())
+	_ship_basis = Basis(Vector3.UP, heading * bend) * Basis(Vector3.RIGHT, -climb * 1.3 * sin(PI * minf(far * 1.2, 1.0)))
+
+
+## Shows the launched airship `seconds` into its flight, in this light, or
+## puts it away (below zero).
+func show_launch(daylight_: Daylight, conditions_: Weather.Conditions, seconds: float) -> void:
+	daylight = daylight_
+	conditions = conditions_
+	launch_seconds = seconds if seconds <= LAUNCH_SECONDS else -1.0
+	_follow_light()
+	# Thinning into the distance at the last.
+	modulate.a = 1.0 - smoothstep(0.84, 0.98, seconds / LAUNCH_SECONDS)
+	queue_redraw()
+
+
+## The door's opening on screen (760 across), corner by corner: what is seen
+## through it is the garden and the valley.
+func door_outline() -> PackedVector2Array:
+	var outline := PackedVector2Array()
+	for corner: Vector3 in [Vector3(-DOOR_HALF_W, 0, DOOR_Z), Vector3(-DOOR_HALF_W, DOOR_H, DOOR_Z),
+			Vector3(DOOR_HALF_W, DOOR_H, DOOR_Z), Vector3(DOOR_HALF_W, 0, DOOR_Z)]:
+		outline.append(_project(_to_cam(corner)))
+	return outline
 
 
 ## The clear sky's colour at a height on screen under `light`, as
@@ -335,11 +438,11 @@ func clear_sky_at(light: Daylight, screen_y: float) -> Color:
 
 
 func _sky_top() -> Color:
-	return daylight.top.lerp(Color(0.62, 0.65, 0.70) * daylight.ambient, conditions.cloud * 0.6)
+	return daylight.top.lerp(_shade(Color(0.62, 0.65, 0.70), daylight.ambient), conditions.cloud * 0.6)
 
 
 func _sky_bottom() -> Color:
-	return daylight.bottom.lerp(Color(0.62, 0.65, 0.70) * daylight.ambient, conditions.cloud * 0.6)
+	return daylight.bottom.lerp(_shade(Color(0.62, 0.65, 0.70), daylight.ambient), conditions.cloud * 0.6)
 
 
 func _draw_sky() -> void:
@@ -373,71 +476,126 @@ func _ridge_point(az_deg: float, dist: float, h: float) -> Vector3:
 	return Vector3(sin(a) * dist, h, cos(a) * dist + DOOR_Z)
 
 
+## The far range's peaks: azimuth, height, how far each flank runs to the
+## left and to the right (degrees), so no two have the same shape.
 const PEAKS := [
-	[-52.0, 3300.0, 12.0], [-38.0, 3900.0, 11.0], [-25.0, 4600.0, 11.0],
-	[-12.0, 4000.0, 10.0], [9.0, 4200.0, 10.0], [22.0, 5000.0, 11.0],
-	[38.0, 3800.0, 11.0], [54.0, 4300.0, 12.0],
+	[-62.0, 2916.0, 19.0, 23.0], [-47.0, 3276.0, 17.0, 19.0], [-34.0, 3564.0, 18.0, 15.0],
+	[-25.0, 3204.0, 12.0, 14.0], [-14.0, 3924.0, 16.0, 12.0], [-6.0, 4500.0, 13.0, 15.0],
+	[3.0, 3996.0, 11.0, 16.0], [14.0, 3420.0, 13.0, 15.0], [26.0, 3708.0, 16.0, 18.0],
+	[39.0, 3276.0, 15.0, 17.0], [52.0, 3492.0, 17.0, 21.0], [66.0, 3060.0, 17.0, 21.0],
 ]
 
 
-## Height of the far range at an azimuth, and which peak owns it.
-func _range_height(az: float) -> Vector2:
-	var best := 1300.0 + 90.0 * sin(az * 0.9) + 50.0 * sin(az * 2.7)
-	var who := -1.0
+## This valley's own number for one thing or another, 0 to 1: the same every
+## time, and the middle in the first valley, which is as it was drawn.
+func _roll(what: int) -> float:
+	if valley == 0:
+		return 0.5
+	return fposmod(sin(valley * 127.1 + what * 311.7) * 43758.5453, 1.0)
+
+
+## This valley's colours: 0 far grass, 1 near grass, 2 the airship's cloth.
+func _valley_colour(which: int) -> Color:
+	return (VALLEYS[posmod(valley, VALLEYS.size())] as Array)[which] as Color
+
+
+## A fixed roughness along the range: -1 to 1, the same every time, with no
+## pattern the eye can follow.
+func _crag(az: float, seed_: float) -> float:
+	var a := az + seed_ * 37.0
+	return (sin(a * 1.7 + 0.6 * sin(a * 0.43)) * 0.45 + sin(a * 4.1 + seed_ + 1.3 * sin(a * 0.9)) * 0.30
+			+ sin(a * 9.7 + seed_ * 2.0) * 0.15 + sin(a * 21.3 + seed_ * 5.0) * 0.10)
+
+
+## Height of the far range at an azimuth.
+func _range_height(az: float) -> float:
+	# One connected range: a high crest the peaks stand on, so the saddles
+	# between them stay far above the foothills.
+	var own := valley * 1.7
+	var best := 2500.0 + 260.0 * _crag(az * 0.3, 9.0 + own) + 110.0 * _crag(az * 1.1, 12.0 + own)
 	for k in PEAKS.size():
 		var pk: Array = PEAKS[k]
-		var h: float = float(pk[1]) * (1.0 - absf(az - float(pk[0])) / float(pk[2]))
-		h += 80.0 * sin(az * 5.3 + k) + 40.0 * sin(az * 13.1 + k * 2.0)
-		if h > best:
-			best = h
-			who = k
-	return Vector2(best, who)
+		# Each valley moves its peaks a little and makes them taller or lower.
+		var off := az - float(pk[0]) - (_roll(k) - 0.5) * 9.0
+		var top := float(pk[1]) * (0.8 + 0.4 * _roll(k + 40))
+		var flank: float = float(pk[2]) if off < 0.0 else float(pk[3])
+		var t := 1.0 - absf(off) / flank
+		if t <= 0.0:
+			continue
+		# Broad at the foot, steep near the top, with shoulders and notches.
+		var h: float = top * (0.62 * t + 0.38 * t * t)
+		h += top * (0.06 * _crag(az, k + own) + 0.03 * _crag(az * 2.3, k + 20.0 + own)) * minf(1.0, t * 3.0 + 0.2)
+		best = maxf(best, h)
+	return best
+
+
+## How high the ground stands: level in the valley, where the railway runs,
+## then rising to the crest of the near hills.
+func _ground(az: float, dist: float) -> float:
+	var k := smoothstep(HILLS_FOOT, HILLS_CREST, dist)
+	return k * (170.0 + 60.0 * sin(az * 0.08 + 0.77) + 26.0 * sin(az * 0.31 + 2.31) + 8.0 * _crag(az * 0.5, 3.0))
+
+
+func _ground_point(az: float, dist: float) -> Vector3:
+	return _ridge_point(az, dist, _ground(az, dist))
+
+
+## The ground under a spot in the world.
+func _ground_at(x: float, z: float) -> float:
+	var t := z - DOOR_Z
+	return _ground(rad_to_deg(atan2(x, t)), Vector2(x, t).length())
 
 
 func _draw_land() -> void:
 	var horizon := SIZE * 0.5 + _focal * tan(_pitch)
-	var grass_lit := 0.3 + 0.7 * _day
-	var far_grass := Color(0.50, 0.60, 0.42) * grass_lit
-	var near_grass := Color(0.36, 0.50, 0.28) * grass_lit
+	var dim := 0.3 + 0.7 * _day
+	var far_grass := _shade(_valley_colour(0), dim)
+	var near_grass := _shade(_valley_colour(1), dim)
 	_fan(PackedVector2Array([Vector2(0, horizon - 2), Vector2(SIZE, horizon - 2), Vector2(SIZE, SIZE), Vector2(0, SIZE)]),
 		PackedColorArray([far_grass, far_grass, near_grass, near_grass]))
-	# The far range: grey-blue peaks, sunlit on their left faces, snow on top.
+	# The far range: grey-blue peaks, sunlit where they face left, snow on top.
 	var dist := 14000.0
-	var az := -75.0
-	var step := 0.4
-	while az < 75.0:
-		var h0 := _range_height(az)
-		var h1 := _range_height(az + step)
-		var lit := true
-		if h0.y >= 0.0:
-			lit = az < float((PEAKS[int(h0.y)] as Array)[0])
-		var face := (Color(0.68, 0.72, 0.80) if lit else Color(0.50, 0.55, 0.66)) * (0.3 + 0.7 * _day)
-		var foot := _sky_bottom()
-		_poly([_ridge_point(az, dist, h0.x), _ridge_point(az + step, dist, h1.x),
+	var step := 0.25
+	var count := int(150.0 / step)
+	# Each height once: the slices share their corners.
+	var heights := PackedFloat32Array()
+	for k in count + 1:
+		heights.append(_range_height(-75.0 + k * step))
+	var foot := _sky_bottom()
+	for k in count:
+		var az := -75.0 + k * step
+		var h0 := heights[k]
+		var h1 := heights[k + 1]
+		# A face that climbs to the right looks left, into the light.
+		var lit := heights[mini(k + 4, count)] > heights[maxi(k - 4, 0)]
+		var face := _shade(Color(0.68, 0.72, 0.80) if lit else Color(0.50, 0.55, 0.66), dim)
+		_poly([_ridge_point(az, dist, h0), _ridge_point(az + step, dist, h1),
 				_ridge_point(az + step, dist, -60), _ridge_point(az, dist, -60)],
 			[face, face, foot, foot])
-		var snow0 := _snow_depth(az, h0.x)
-		var snow1 := _snow_depth(az + step, h1.x)
+		var snow0 := _snow_depth(az, h0)
+		var snow1 := _snow_depth(az + step, h1)
 		if snow0 > 0.0 or snow1 > 0.0:
-			var white := (Color(0.96, 0.97, 0.99) if lit else Color(0.80, 0.85, 0.92)) * (0.3 + 0.7 * _day)
-			_flat([_ridge_point(az, dist, h0.x), _ridge_point(az + step, dist, h1.x),
-					_ridge_point(az + step, dist, h1.x - snow1), _ridge_point(az, dist, h0.x - snow0)],
+			var white := _shade(Color(0.96, 0.97, 0.99) if lit else Color(0.80, 0.85, 0.92), dim)
+			_flat([_ridge_point(az, dist, h0), _ridge_point(az + step, dist, h1),
+					_ridge_point(az + step, dist, h1 - snow1), _ridge_point(az, dist, h0 - snow0)],
 				white)
-		az += step
-	var dim := 0.3 + 0.7 * _day
-	_draw_hills(6000.0, 260.0, 120.0, Color(0.33, 0.45, 0.45) * dim, Color(0.55, 0.64, 0.66) * dim, 0.31)
-	_draw_hills(2400.0, 120.0, 70.0, Color(0.33, 0.47, 0.33) * dim, Color(0.42, 0.54, 0.40) * dim, 0.77)
+	# Foothills, each row higher and hazier than the one in front.
+	_draw_hills(9000.0, 900.0, 260.0, _shade(Color(0.42, 0.52, 0.56), dim), _shade(Color(0.58, 0.66, 0.70), dim), 0.31 + valley * 2.3)
+	_draw_hills(5200.0, 430.0, 150.0, _shade(Color(0.34, 0.47, 0.42), dim), _shade(Color(0.48, 0.58, 0.54), dim), 1.9 + valley * 2.3)
+	_draw_ground(far_grass, near_grass)
 	_draw_railway(dim)
-
-	_draw_road()
+	_draw_road(dim)
+	_draw_mast(dim)
+	_draw_station(dim)
 
 
 func _snow_depth(az: float, h: float) -> float:
-	var over := h - 2500.0
+	# The snow lies lower in some valleys than in others.
+	var over := h - 2900.0 - (_roll(90) - 0.5) * 700.0
 	if over <= 0.0:
 		return 0.0
 	# Ragged lower edge: streaks of snow running down the gullies.
-	var streak := maxf(0.0, sin(az * 9.0)) * 260.0 + maxf(0.0, sin(az * 23.0 + 1.0)) * 140.0
+	var streak := maxf(0.0, _crag(az * 1.3, 4.0)) * 380.0 + maxf(0.0, sin(az * 23.0 + 1.0)) * 120.0
 	return over * 0.4 + streak * 1.6 * clampf(over / 800.0, 0.0, 1.0)
 
 
@@ -445,13 +603,47 @@ func _draw_hills(dist: float, base_h: float, swing: float, top: Color, foot: Col
 	var az := -75.0
 	var step := 1.0
 	while az < 75.0:
-		var h0 := base_h + swing * sin(az * 0.08 + seed_) + swing * 0.4 * sin(az * 0.31 + seed_ * 3.0)
 		var a2 := az + step
-		var h1 := base_h + swing * sin(a2 * 0.08 + seed_) + swing * 0.4 * sin(a2 * 0.31 + seed_ * 3.0)
-		_poly([_ridge_point(az, dist, h0), _ridge_point(a2, dist, h1),
+		_poly([_ridge_point(az, dist, _hill(az, base_h, swing, seed_)), _ridge_point(a2, dist, _hill(a2, base_h, swing, seed_)),
 				_ridge_point(a2, dist, -40), _ridge_point(az, dist, -40)],
 			[top, top, foot, foot])
 		az = a2
+
+
+func _hill(az: float, base_h: float, swing: float, seed_: float) -> float:
+	return (base_h + swing * sin(az * 0.08 + seed_) + swing * 0.4 * sin(az * 0.31 + seed_ * 3.0)
+			+ swing * 0.25 * _crag(az * 0.4, seed_))
+
+
+## The near hills: the valley floor climbing to their crest, as real ground
+## (the road runs up it), far rows first.
+func _draw_ground(far_grass: Color, near_grass: Color) -> void:
+	var rows := 16
+	var cols := 50
+	# The valley floor behind is nearly the far grass where the hills begin,
+	# so they start in it: no step along their foot.
+	var foot := far_grass.lerp(near_grass, 0.06)
+	var crest := far_grass.lerp(near_grass, 0.45)
+	# Each corner once: a row of points and lights at each distance.
+	var points: Array[Vector3] = []
+	var colours: Array[Color] = []
+	for row in rows + 1:
+		var d := lerpf(HILLS_FOOT, HILLS_CREST, float(row) / rows)
+		var colour := foot.lerp(crest, sin(PI * 0.5 * float(row) / rows))
+		for col in cols + 1:
+			var az := -75.0 + col * 150.0 / cols
+			points.append(_ground_point(az, d))
+			colours.append(_shade(colour, _slope_light(az, d)))
+	for row in range(rows, 0, -1):
+		for col in cols:
+			var a := row * (cols + 1) + col
+			var b := (row - 1) * (cols + 1) + col
+			_poly([points[a], points[a + 1], points[b + 1], points[b]],
+				[colours[a], colours[a + 1], colours[b + 1], colours[b]])
+
+
+func _slope_light(az: float, dist: float) -> float:
+	return 1.0 + 0.10 * clampf((_ground(az + 1.5, dist) - _ground(az - 1.5, dist)) / 14.0, -1.0, 1.0)
 
 
 ## The railway across the valley: a ballast bank with its rails, and a
@@ -459,14 +651,134 @@ func _draw_hills(dist: float, base_h: float, swing: float, top: Color, foot: Col
 func _draw_railway(dim: float) -> void:
 	var z := RAILWAY_Z
 	_flat([Vector3(-4000, 0.6, z - 7), Vector3(4000, 0.6, z - 7), Vector3(4000, 0.6, z + 7), Vector3(-4000, 0.6, z + 7)],
-		Color(0.45, 0.40, 0.34) * dim)
+		_shade(Color(0.45, 0.40, 0.34), dim))
 	for side: float in [-2.4, 2.4]:
-		_beam(Vector3(-4000, 1.2, z + side), Vector3(4000, 1.2, z + side), 0.5, Color(0.25, 0.24, 0.24) * dim, Color(0, 0, 0, 0))
+		_beam(Vector3(-4000, 1.2, z + side), Vector3(4000, 1.2, z + side), 0.5, _shade(Color(0.25, 0.24, 0.24), dim), Color(0, 0, 0, 0))
 	var crossing := _road_x(z)
 	# Beyond the track, so a passing train goes in front of them.
 	for side: float in [-14.0, 14.0]:
 		var foot := Vector3(crossing + side, 0, z + 12)
-		_beam(foot, foot + Vector3(0, 10, 0), 0.8, Color(0.92, 0.92, 0.9) * dim, Color(0, 0, 0, 0))
+		_beam(foot, foot + Vector3(0, 10, 0), 0.8, _shade(Color(0.92, 0.92, 0.9), dim), Color(0, 0, 0, 0))
+
+
+## The station, beyond the track just past the crossing: where its platform
+## begins and ends, in feet along the line from the road; how far along the
+## platform its water tower stands; and where a train's front stands when
+## it stops there, its tender (52 feet behind its front) under the
+## tower's spout.
+const STATION_FROM := 24.0
+const STATION_TO := 142.0
+const STATION_TOWER := 74.0
+const STATION_STOP := STATION_FROM + STATION_TOWER + 52.0
+
+
+## An upright face in the world, looking at the hangar: from x0 to x1 along
+## the line, y0 to y1 up, at depth z.
+func _face(x0: float, x1: float, y0: float, y1: float, z: float, colour: Color) -> void:
+	_flat([Vector3(x0, y0, z), Vector3(x1, y0, z), Vector3(x1, y1, z), Vector3(x0, y1, z)], colour)
+
+
+## The station where the night train stops to trade: a stone platform, a
+## timber station house with a canopy over the platform and windows lit
+## after dark, a copper water tower for the engines, and a lamp. All of it
+## stands beyond the track, so a train goes in front of it.
+func _draw_station(dim: float) -> void:
+	var from := crossing_x() + STATION_FROM
+	var to := crossing_x() + STATION_TO
+	var z := RAILWAY_Z + 7.5
+	var night := 1.0 - _day
+	var top := 4.3
+	var timber := _shade(Color(0.50, 0.33, 0.20), dim)
+	var trim := _shade(Color(0.80, 0.74, 0.60), dim)
+	var slate := _shade(Color(0.27, 0.28, 0.31), dim)
+	var iron := _shade(Color(0.16, 0.16, 0.17), dim)
+	var lit := _shade(Color(0.20, 0.24, 0.28), dim).lerp(Color(1.0, 0.80, 0.46), 0.15 + 0.8 * night)
+	# The water tower, by where the tender stops: a copper tank on four
+	# iron legs under a low cone, its spout at the front, raised on its
+	# hinge, ready to drop over the track and fill the tender.
+	var tower := from + STATION_TOWER
+	var none := Color(0, 0, 0, 0)
+	# The far pair first, drawn inside the near pair and paler so that all
+	# four show from this far off, then the near pair, braced corner to
+	# corner.
+	var far_iron := _shade(Color(0.24, 0.24, 0.25), dim)
+	for leg: float in [-3.2, 3.2]:
+		_beam(Vector3(tower + leg, top, z + 13), Vector3(tower + leg, 17, z + 13), 0.7, far_iron, none)
+	for leg: float in [-6.5, 6.5]:
+		_beam(Vector3(tower + leg * 1.12, top, z + 5), Vector3(tower + leg, 17, z + 5), 0.9, iron, none)
+	_beam(Vector3(tower - 7.0, 8, z + 5), Vector3(tower + 6.6, 15, z + 5), 0.3, iron, none)
+	_beam(Vector3(tower + 7.0, 8, z + 5), Vector3(tower - 6.6, 15, z + 5), 0.3, iron, none)
+	_face(tower - 7.0, tower + 7.0, 17, 27, z + 5, _shade(COPPER, dim * 0.9))
+	_face(tower - 7.0, tower - 3.5, 17, 27, z + 4.9, _shade(COPPER, dim * 1.15))
+	for band: float in [18.2, 22.0, 25.8]:
+		_face(tower - 7.2, tower + 7.2, band - 0.3, band + 0.3, z + 4.8, _shade(BRASS, dim))
+	_flat([Vector3(tower - 8.0, 27, z + 5), Vector3(tower + 8.0, 27, z + 5), Vector3(tower, 31, z + 9)], slate)
+	# The spout: hinged at the tank's foot, held up by a chain from the
+	# tank's rim, its brass mouth out over the track where the tender
+	# stops, clear of the tank so it shows against the hills.
+	var hinge := Vector3(tower - 3.0, 17.6, z + 4.5)
+	var mouth := Vector3(tower - 11.0, 21.5, z - 5.5)
+	_beam(hinge, mouth, 1.5, iron, none)
+	_beam(Vector3(tower - 6.0, 26.8, z + 4.5), mouth, 0.25, _shade(Color(0.55, 0.52, 0.48), dim), none)
+	var mouth_seen := _to_cam(mouth)
+	if mouth_seen.z > NEAR:
+		_disc(_project(mouth_seen), maxf(1.1 * _focal / mouth_seen.z, 1.2), _shade(BRASS, dim))
+	# The station house: boarded walls, a slate roof with a chimney.
+	var house := from + 8.0
+	var house_to := house + 46.0
+	_face(house + 34.0, house + 37.0, 20, 28, z + 16, _shade(Color(0.42, 0.22, 0.17), dim))
+	_flat([Vector3(house - 3.0, 15.5, z + 5), Vector3(house_to + 3.0, 15.5, z + 5),
+			Vector3(house_to + 1.0, 24, z + 16), Vector3(house - 1.0, 24, z + 16)], slate)
+	_face(house, house_to, top, 15.5, z + 7, timber)
+	_face(house, house_to, 14.6, 15.5, z + 6.9, trim)
+	for board in 11:
+		var x := house + 4.0 + board * 4.0
+		_face(x, x + 0.25, top, 14.6, z + 6.9, _shade(Color(0.40, 0.26, 0.16), dim))
+	# A door and three windows, lit after dark.
+	_face(house + 20.0, house + 25.0, top, 12.4, z + 6.8, _shade(Color(0.30, 0.19, 0.12), dim))
+	_face(house + 21.0, house + 24.0, 9.6, 11.6, z + 6.7, lit)
+	for window: float in [5.0, 12.0, 31.0, 38.0]:
+		_face(house + window - 0.5, house + window + 4.5, 7.3, 12.7, z + 6.8, trim)
+		_face(house + window, house + window + 4.0, 7.8, 12.2, z + 6.7, lit)
+	# The platform: stone, with a pale edge, and the canopy on its posts.
+	_flat([Vector3(from, top, z), Vector3(to, top, z), Vector3(to, top, z + 16), Vector3(from, top, z + 16)],
+		_shade(Color(0.56, 0.54, 0.50), dim))
+	_face(from, to, 0.6, top, z, _shade(Color(0.42, 0.40, 0.37), dim))
+	_face(from, to, top - 0.5, top, z - 0.1, trim)
+	_flat([Vector3(house - 6.0, 13.2, z + 0.5), Vector3(house_to + 6.0, 13.2, z + 0.5),
+			Vector3(house_to + 6.0, 14.8, z + 7), Vector3(house - 6.0, 14.8, z + 7)], _shade(Color(0.33, 0.34, 0.37), dim))
+	_face(house - 6.0, house_to + 6.0, 12.5, 13.2, z + 0.5, trim)
+	for post in 5:
+		var x := house - 5.0 + post * 14.0
+		_beam(Vector3(x, top, z + 1), Vector3(x, 13.0, z + 1), 0.45, iron, Color(0, 0, 0, 0))
+	# The platform lamp.
+	var lamp := Vector3(to - 14.0, 14.0, z + 2)
+	_beam(Vector3(lamp.x, top, lamp.z), lamp, 0.4, iron, Color(0, 0, 0, 0))
+	var seen := _to_cam(lamp)
+	if seen.z > NEAR:
+		var at := _project(seen)
+		var size := _focal / seen.z
+		_glow(at, 9.0 * size, Color(1.0, 0.85, 0.55, 0.5 * night))
+		_disc(at, maxf(0.9 * size, 1.0), _shade(Color(0.9, 0.86, 0.7), dim).lerp(Color(1.0, 0.93, 0.75), night))
+
+
+## The head of the mooring mast, in the valley beyond the railway and left
+## of the road: where a visiting airship ties up by its nose.
+func mast_head() -> Vector3:
+	return Vector3(crossing_x() - 70.0, 96.0, RAILWAY_Z + 130.0)
+
+
+## The mooring mast, which always stands: two iron legs leaning to a head,
+## braced, and a brass cap for an airship's nose.
+func _draw_mast(dim: float) -> void:
+	var head := mast_head()
+	var iron := _shade(Color(0.20, 0.19, 0.19), dim)
+	for foot: float in [-9.0, 9.0]:
+		_beam(Vector3(head.x + foot, 0, head.z), head, 1.2, iron, Color(0, 0, 0, 0))
+	for k in 5:
+		_beam(Vector3(head.x - 9.0 * (1.0 - k / 6.0), head.y * k / 6.0, head.z),
+			Vector3(head.x + 9.0 * (1.0 - (k + 1) / 6.0), head.y * (k + 1) / 6.0, head.z), 0.5, iron, Color(0, 0, 0, 0))
+	_beam(head, head + Vector3(0, 5.0, 0), 1.6, _shade(BRASS, dim), Color(0, 0, 0, 0))
 
 
 ## Where the railway meets the road, across the valley.
@@ -476,18 +788,27 @@ func crossing_x() -> float:
 
 func _road_x(z: float) -> float:
 	var t := z - DOOR_Z
-	return 260.0 * t / 2400.0 + 70.0 * sin(t / 420.0)
+	return 260.0 * t / HILLS_CREST + 70.0 * sin(t / 420.0)
 
 
-func _draw_road() -> void:
-	var colour := Color(0.66, 0.58, 0.44)
+## The road: one ribbon from the door, over the crossing and up the hill to
+## its crest, narrowing with distance as the ground carries it.
+func _draw_road(dim: float) -> void:
+	var colour := _shade(Color(0.66, 0.58, 0.44), dim)
+	# Projected unclipped: the road starts at the door, far in front of the
+	# camera, and stops short of the crest, where it goes over out of sight.
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
 	var z := DOOR_Z
-	while z < DOOR_Z + 2400.0:
-		var z2 := z + 30.0
-		var w := 9.0
-		_flat([Vector3(_road_x(z) - w, 0.2, z), Vector3(_road_x(z2) - w, 0.2, z2),
-				Vector3(_road_x(z2) + w, 0.2, z2), Vector3(_road_x(z) + w, 0.2, z)], colour)
-		z = z2
+	while z <= DOOR_Z + 0.9 * HILLS_CREST:
+		var x := _road_x(z)
+		var y := _ground_at(x, z) + 0.2
+		left.append(_project(_to_cam(Vector3(x - 9.0, y, z))))
+		right.append(_project(_to_cam(Vector3(x + 9.0, y, z))))
+		z += 15.0
+	for k in left.size() - 1:
+		_fan(PackedVector2Array([left[k], left[k + 1], right[k + 1], right[k]]),
+			PackedColorArray([colour, colour, colour, colour]))
 
 
 # ---------------------------------------------------------------- the garden
@@ -496,55 +817,83 @@ func _draw_garden() -> void:
 	var soil := Color(0.30, 0.22, 0.15)
 	_flat([Vector3(-118, 0.3, DOOR_Z + 24), Vector3(-118, 0.3, DOOR_Z + 76),
 			Vector3(-22, 0.3, DOOR_Z + 76), Vector3(-22, 0.3, DOOR_Z + 24)], soil)
-	var count := mini(garden_plants, 6)
-	var spots: Array[Vector3] = [
-		Vector3(-102, 0, DOOR_Z + 36), Vector3(-70, 0, DOOR_Z + 36), Vector3(-38, 0, DOOR_Z + 36),
-		Vector3(-102, 0, DOOR_Z + 62), Vector3(-70, 0, DOOR_Z + 62), Vector3(-38, 0, DOOR_Z + 62),
-	]
+	# Eight places, each plant (rusted ones too) in the next one round: once the plot is full
+	# a new plant takes the oldest one's place, and the rest stay put.
+	var places := 8
+	var standing: Array[int] = []
+	standing.resize(places)
+	standing.fill(-1)
+	for k in garden_plants.size():
+		standing[k % places] = garden_plants[k]
 	# Far row first, so the near row stands in front.
-	for k: int in [3, 4, 5, 0, 1, 2]:
-		if k < count:
-			_draw_plant(spots[k], ([0, 2, 1, 3, 4, 3] as Array)[k] as int)
+	for place: int in [4, 5, 6, 7, 0, 1, 2, 3]:
+		if standing[place] >= 0:
+			# The far row stands in the gaps of the near one.
+			var far := place >= 4
+			_draw_plant(Vector3(-110.0 + (place % 4) * 24.0 + (12.0 if far else 0.0), 0, DOOR_Z + (64.0 if far else 34.0)), standing[place])
 
 
-func _draw_plant(base: Vector3, kind: int) -> void:
-	var stem_top := base + Vector3(0, 15, 0)
-	var stem := Color(0.55, 0.40, 0.18)
+## A rusted plant of `kind` that seized at `progress`, as the garden's list
+## shows it (a plant that stands is just its kind).
+static func rusted(kind: int, progress: float) -> int:
+	return RUSTED + kind * 100 + roundi(clampf(progress, 0.0, 1.0) * 99.0)
+
+
+func _draw_plant(base: Vector3, plant: int) -> void:
+	var kind := plant
+	var rust := -1.0
+	if plant >= RUSTED:
+		kind = (plant - RUSTED) / 100
+		rust = ((plant - RUSTED) % 100) / 99.0
+	# A plant left to rust stands as far as it was built, all in rust.
+	var grown := 1.0 if rust < 0.0 else lerpf(0.45, 1.0, rust)
+	var brass := BRASS if rust < 0.0 else RUST
+	var copper := COPPER if rust < 0.0 else RUST.darkened(0.15)
+	var alloy := ALLOY if rust < 0.0 else RUST.lightened(0.1)
+	var canvas := CANVAS if rust < 0.0 else RUST.lerp(CANVAS, 0.25)
+	var stem_top := base + Vector3(0, 15 * grown, 0)
+	var stem := Color(0.55, 0.40, 0.18) if rust < 0.0 else RUST.darkened(0.3)
+	# Rust doesn't shine.
+	var shine := Color(1, 1, 1, 0.5 if rust < 0.0 else 0.0)
 	_beam(base, stem_top, 0.8, stem, Color(0, 0, 0, 0))
 	var c := _to_cam(stem_top)
 	if c.z < NEAR:
 		return
 	var at := _project(c)
-	var px := _focal / c.z
+	var px := _focal / c.z * grown
 	match kind:
 		0:  # gear-flower
-			_gear(at, 6.0 * px, 10, BRASS)
+			_gear(at, 6.0 * px, 10, brass)
 			_disc(at, 2.0 * px, Color(0.45, 0.30, 0.12))
-		1:  # pipe-vine: copper tubes curling up
-			for k in 3:
-				var off := Vector2((k - 1) * 2.4, 0) * px
-				_beam(base + Vector3((k - 1) * 2.0, 0, 0), stem_top + Vector3((k - 1) * 3.0, 2.0 - absf(k - 1) * 3.0, 0),
-					0.9, COPPER, Color(1, 0.8, 0.6, 0.5))
-				_disc(at + off + Vector2(0, -(2.0 - absf(k - 1) * 3.0) * px), 0.9 * px, Color(0.55, 0.30, 0.18))
-		2:  # girder-reed: light metal lattice stalks
-			for k in 3:
-				var top := base + Vector3((k - 1) * 3.0, 20.0 - absf(k - 1) * 5.0, 0)
-				_girder(base + Vector3((k - 1) * 1.2, 0, 0), top, 1.6, ALLOY, Color(1, 1, 1, 0.5))
-				var tc := _to_cam(top)
-				if tc.z > NEAR:
-					_disc(_project(tc), 1.0 * _focal / tc.z, BRASS)
+		1:  # pipe-vine: one copper pipe climbing in square turns, as the arm builds it
+			var turns: Array[Vector3] = [Vector3(0, 5, 0), Vector3(3.5, 5, 0), Vector3(3.5, 10, 0),
+				Vector3(-3.5, 10, 0), Vector3(-3.5, 15, 0), Vector3(0, 15, 0), Vector3(0, 19, 0)]
+			var from := base
+			for turn: Vector3 in turns:
+				var to := base + turn * grown
+				_beam(from, to, 1.0 * grown, copper, Color(1, 0.8, 0.6, shine.a))
+				from = to
+			var hc := _to_cam(from)
+			if hc.z > NEAR:
+				_disc(_project(hc), 1.5 * _focal / hc.z * grown, brass)
+		2:  # girder-reed: one slender lattice mast with a brass tip
+			var top := base + Vector3(0, 22.0, 0) * grown
+			_girder(base, top, 2.2 * grown, alloy, shine)
+			var tc := _to_cam(top)
+			if tc.z > NEAR:
+				_disc(_project(tc), 1.2 * _focal / tc.z * grown, brass)
 		3:  # sail-cotton: bolls of cloth for the envelope
 			for k in 5:
 				var ang := deg_to_rad(-160.0 + k * 35.0)
 				var tip := at + Vector2(cos(ang), sin(ang)) * 6.0 * px
-				_strip(at, tip, 0.35 * px, 0.25 * px, Color(0.55, 0.40, 0.18))
-				_disc(tip, 2.4 * px, CANVAS.darkened(0.12))
-				_disc(tip + Vector2(-0.5, -0.6) * px, 1.7 * px, CANVAS.lightened(0.1))
+				_strip(at, tip, 0.35 * px, 0.25 * px, stem)
+				_disc(tip, 2.4 * px, canvas.darkened(0.12))
+				_disc(tip + Vector2(-0.5, -0.6) * px, 1.7 * px, canvas.lightened(0.1))
 		_:  # kettle-gourd: ripens into a boiler drum
 			var body := at + Vector2(0, 3.0 * px)
-			_disc(body, 5.5 * px, COPPER.darkened(0.15))
-			_disc(body + Vector2(-1.4, -1.6) * px, 3.2 * px, COPPER.lightened(0.15))
-			_strip(body + Vector2(0, -5.5) * px, body + Vector2(0, -8.0) * px, 0.8 * px, 0.6 * px, BRASS.darkened(0.2))
+			_disc(body, 5.5 * px, copper.darkened(0.15))
+			_disc(body + Vector2(-1.4, -1.6) * px, 3.2 * px, copper.lightened(0.15))
+			_strip(body + Vector2(0, -5.5) * px, body + Vector2(0, -8.0) * px, 0.8 * px, 0.6 * px, brass.darkened(0.2))
 
 
 func _gear(centre: Vector2, radius: float, teeth: int, colour: Color) -> void:
@@ -577,18 +926,96 @@ func _interior_light(z: float) -> float:
 	return (0.4 + 0.75 * t * t * t) * (0.38 + 0.62 * _day)
 
 
-## Clouds in the doorway's patch of sky. Drawn still; their places fixed.
+## Clouds in the doorway's patch of sky, as Grove drew them: each a heap of
+## soft puffs, of three kinds (heaped, layered, wispy), lit by the hour and
+## tinted by the sky. More of them show as the cover grows. Drawn still;
+## their places fixed.
 func _draw_clouds() -> void:
-	var lit := 0.15 + 0.85 * _day
-	if conditions.cloud > 0.0:
-		# In the doorway's patch of sky, between the lintel and the peaks.
-		var random := Random.new(11)
-		for k in 7:
-			var at := Vector2(90 + random.unit() * 440, 250 + random.unit() * 70)
-			var size := Vector2(110 + random.unit() * 120, 26 + random.unit() * 20)
-			var colour := Color(0.88, 0.89, 0.92) * lit
-			_ellipse(at, size, Color(colour, 0.6 * conditions.cloud))
-			_ellipse(at + Vector2(size.x * 0.3, -size.y * 0.35), size * 0.6, Color(colour, 0.5 * conditions.cloud))
+	if conditions.cloud <= 0.02:
+		return
+	var level := (0.24 + 0.73 * daylight.ambient) * (1.0 - 0.4 * conditions.rain)
+	var sky := _sky_top().lerp(_sky_bottom(), 0.6)
+	var mean := (sky.r + sky.g + sky.b) / 3.0
+	var cast := clampf(0.8 * (1.0 - daylight.ambient) / 0.78, 0.0, 0.6)
+	var tone := Color(clampf(level * 0.98 + cast * (sky.r - mean), 0.0, 1.0),
+		clampf(level * 0.99 + cast * (sky.g - mean), 0.0, 1.0),
+		clampf(level + cast * (sky.b - mean), 0.0, 1.0))
+	var shade := Color(tone.r * 0.66, tone.g * 0.71, tone.b * 0.8)
+	for k in 9:
+		var shown := clampf(conditions.cloud * 9.0 - k, 0.0, 1.0) * (0.7 + 0.3 * conditions.cloud)
+		if shown <= 0.0:
+			continue
+		var a := absf(sin(k * 91.7 + 1.3))
+		var b := absf(sin(k * 47.1 + 2.9))
+		var w := 120.0 + 100.0 * a
+		var corner := Vector2(70.0 + fposmod(a * 7.0 + k * 0.37, 1.0) * 480.0 - w * 0.5, 226.0 + 62.0 * b)
+		_draw_cloud(k + 1, Rect2(corner, Vector2(w, w * 0.44)), tone, shade, shown)
+
+
+func _draw_cloud(seed_: int, box: Rect2, tone: Color, shade: Color, shown: float) -> void:
+	var r := Random.new(seed_ * 7919 + 13)
+	var w := box.size.x
+	var h := box.size.y
+	var puff := func(x: float, y: float, rad: float, stretch: float, colour: Color, alpha: float) -> void:
+		# Kept inside the cloud's box, as Grove did: flat bases, no stray wisps.
+		var inside := maxf(1.0, minf(minf(rad, y), minf(h - y, minf(x, w - x))))
+		var wide := maxf(1.0, minf(stretch, minf(x / inside, (w - x) / inside)))
+		_puff(box.position + Vector2(x, y), inside, wide, colour, alpha * shown)
+	match seed_ % 3:
+		0:  # heaped: a flat base, rounded towers, frayed ends
+			var bottom := h * 0.8
+			var n := 10 + int(r.unit() * 6)
+			for i in n:
+				var t := (i + 0.5) / n
+				var rad := h * (0.15 + 0.3 * sin(PI * t) * (0.5 + 0.5 * r.unit()))
+				var x := w * (0.1 + 0.8 * t) + (r.unit() - 0.5) * w * 0.05
+				puff.call(x, bottom - rad * (0.5 + 0.35 * r.unit()), rad * 1.3, 1.0 + r.unit() * 0.3, tone, 0.62)
+			for m in 3 + int(r.unit() * 4):
+				puff.call(w * (0.22 + 0.56 * r.unit()), bottom - h * (0.3 + 0.25 * r.unit()),
+					h * (0.12 + 0.14 * r.unit()), 1.0 + r.unit() * 0.3, tone, 0.55)
+			puff.call(w * 0.5, bottom - h * 0.02, h * 0.2, w / (h * 0.2) * 0.42, shade, 0.4)
+			for q in 5 + int(r.unit() * 4):
+				var left := r.unit() < 0.5
+				puff.call(w * (0.22 * r.unit() if left else 0.78 + 0.22 * r.unit()), bottom - h * (0.02 + 0.22 * r.unit()),
+					h * (0.08 + 0.1 * r.unit()), 3.0 + r.unit() * 5.0, tone, 0.3)
+		1:  # layered: a long low bank
+			var count := 8 + int(r.unit() * 5)
+			for i in count:
+				var t := (i + 0.5) / count
+				puff.call(w * (0.08 + 0.84 * t) + (r.unit() - 0.5) * w * 0.05, h * (0.5 + (r.unit() - 0.5) * 0.14),
+					h * (0.12 + 0.14 * r.unit()), 2.5 + r.unit() * 3.0, tone, 0.45)
+			puff.call(w * 0.5, h * 0.64, h * 0.16, w / (h * 0.16) * 0.4, shade, 0.28)
+			for q in 7 + int(r.unit() * 4):
+				puff.call(w * (0.02 + 0.96 * r.unit()), h * (0.3 + 0.5 * r.unit()), h * (0.06 + 0.07 * r.unit()),
+					5.0 + r.unit() * 5.0, tone, 0.24)
+		_:  # wispy: thin curved strokes
+			for c in 6 + int(r.unit() * 5):
+				var x0 := w * (0.05 + 0.55 * r.unit())
+				var y0 := h * (0.2 + 0.6 * r.unit())
+				var bend := (r.unit() - 0.5) * 0.5
+				for j in 3 + int(r.unit() * 3):
+					puff.call(x0 + j * w * 0.09, y0 + j * j * h * 0.03 * bend, h * (0.06 + 0.05 * r.unit()),
+						4.0 + r.unit() * 4.0, tone, 0.26)
+
+
+## A soft round puff, `stretch` times as wide as tall: solid at the heart,
+## fading to nothing at its edge.
+func _puff(centre: Vector2, rad: float, stretch: float, colour: Color, alpha: float) -> void:
+	var steps := 20
+	var points := PackedVector2Array([centre])
+	var colours := PackedColorArray([Color(colour, alpha)])
+	for ring: Array in [[0.5, 0.45], [1.0, 0.0]]:
+		for k in steps:
+			var angle := TAU * k / steps
+			points.append(centre + Vector2(cos(angle) * rad * stretch, sin(angle) * rad) * float(ring[0]))
+			colours.append(Color(colour, alpha * float(ring[1])))
+	var idx := PackedInt32Array()
+	for k in steps:
+		var n := (k + 1) % steps
+		idx.append_array([0, 1 + k, 1 + n])
+		idx.append_array([1 + k, 1 + steps + k, 1 + steps + n])
+		idx.append_array([1 + k, 1 + steps + n, 1 + n])
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), idx, points, colours)
 
 
 ## Rain, snow and fog, all outside, in front of the land, the railway and
@@ -615,14 +1042,6 @@ func _draw_weather_outside() -> void:
 		for k in 240:
 			_disc(Vector2(random.unit() * SIZE, random.unit() * SIZE * 0.75), 0.9 + random.unit() * 1.4,
 				Color(1, 1, 1, 0.85 * conditions.snow))
-
-
-func _ellipse(centre: Vector2, size: Vector2, colour: Color) -> void:
-	var points := PackedVector2Array()
-	for k in 24:
-		var angle := TAU * k / 24.0
-		points.append(centre + Vector2(cos(angle) * size.x, sin(angle) * size.y) * 0.5)
-	_fan(points, _same(colour, points.size()))
 
 
 func _draw_hangar_shell() -> void:
@@ -713,10 +1132,32 @@ func _draw_end_wall() -> void:
 		_beam(Vector3(x0, 0, z - 2), Vector3(x0, DOOR_H, z - 2), 7.0, beam, shine)
 		_beam(Vector3(side * (DOOR_HALF_W + 11), 0, z - 1), Vector3(side * (HALF_W - 4), 95, z - 1), 2.5, beam, shine)
 	_beam(Vector3(-DOOR_HALF_W - 3, DOOR_H, z - 2), Vector3(DOOR_HALF_W + 3, DOOR_H, z - 2), 8.0, beam, shine)
+	_draw_pennants()
 	# Daylight catching the edge of the opening.
 	var edge := Color(1.0, 0.92, 0.75, 0.5)
 	_beam(Vector3(-DOOR_HALF_W + 3.5, 0, z - 3), Vector3(-DOOR_HALF_W + 3.5, DOOR_H - 4, z - 3), 1.0, edge, Color(0, 0, 0, 0))
 	_beam(Vector3(-DOOR_HALF_W + 4, DOOR_H - 4, z - 3), Vector3(DOOR_HALF_W - 4, DOOR_H - 4, z - 3), 1.0, edge, Color(0, 0, 0, 0))
+
+
+## The pennants won, on a line strung under the lintel: each a small
+## triangle in its visitor's colour, in the hangar's light; the newest, if
+## there are more than the door has room for.
+func _draw_pennants() -> void:
+	var room := floori((DOOR_HALF_W * 2.0 - 36.0) / 11.0)
+	var shown := mini(pennants, room)
+	if shown <= 0:
+		return
+	var z := DOOR_Z - 4.0
+	var from := -DOOR_HALF_W + 18.0
+	var top := DOOR_H - 5.0
+	var light := _interior_light(DOOR_Z) * 1.5
+	_beam(Vector3(from - 4.0, top, z), Vector3(from + shown * 11.0 + 2.0, top, z), 0.3,
+		_shade(Color(0.85, 0.80, 0.68), light * 0.8), Color(0, 0, 0, 0))
+	for k in shown:
+		var x := from + k * 11.0
+		var colour := _shade(PENNANTS[(pennants - shown + k) % PENNANTS.size()], light)
+		_flat([Vector3(x, top, z), Vector3(x + 7.0, top, z), Vector3(x + 3.5, top - 10.5, z)], colour)
+		_flat([Vector3(x, top, z), Vector3(x + 2.2, top, z), Vector3(x + 3.5, top - 10.5, z)], _shade(colour, 1.2))
 
 
 func _rib_items() -> Array[Item]:
@@ -828,7 +1269,7 @@ func _metal(base: Color, world_p: Vector3, world_n: Vector3) -> Color:
 	var view := (_cam - world_p).normalized()
 	var half := (view + _light).normalized()
 	var spec := pow(maxf(world_n.dot(half), 0.0), 18.0) * (_sun + _moon)
-	var ambient := (0.62 if not launched else 0.85) * (0.35 + 0.65 * _day)
+	var ambient := lerpf(0.62, 0.85, _afield) * (0.35 + 0.65 * _day)
 	var sky := maxf(world_n.y, 0.0) * 0.15 * _day
 	var f := ambient + sky + diffuse * 0.75
 	return Color(base.r * f + spec * 0.9, base.g * f + spec * 0.8, base.b * f + spec * 0.55)
@@ -933,7 +1374,7 @@ func _ship_items(amount: float) -> Array[Item]:
 		items.append_array(_gondola_items(engines))
 	for k in fins:
 		items.append(_fin_item(k))
-	if launched:
+	if painting == Painting.SHIP:
 		items.append_array(_exhaust_items(engines))
 	return items
 
@@ -1008,9 +1449,10 @@ func _cloth_shade(p: Vector3, n: Vector3) -> Color:
 	var diffuse := maxf(n.dot(_light), 0.0) * (_sun + _moon)
 	var view := (_cam - p).normalized()
 	var sheen := pow(maxf(n.dot((view + _light).normalized()), 0.0), 6.0) * 0.12 * (_sun + _moon)
-	var ambient := (0.62 if not launched else 0.8) * (0.35 + 0.65 * _day)
+	var ambient := lerpf(0.62, 0.8, _afield) * (0.35 + 0.65 * _day)
 	var f := ambient + maxf(n.y, 0.0) * 0.12 + diffuse * 0.6
-	return Color(CANVAS.r * f + sheen, CANVAS.g * f + sheen, CANVAS.b * f + sheen * 0.8)
+	var cloth := _valley_colour(2)
+	return Color(cloth.r * f + sheen, cloth.g * f + sheen, cloth.b * f + sheen * 0.8)
 
 
 func _cloth_item(i: int, j: int) -> Item:
@@ -1032,13 +1474,14 @@ func _cloth_item(i: int, j: int) -> Item:
 	var cm := _shade(_cloth_shade(w[2], n_m), 0.94)
 	var cb := _cloth_shade(w[4], n_b)
 	if not facing:
-		var inside := _shade(CANVAS, 0.55)
+		var inside := _shade(_valley_colour(2), 0.55)
 		ca = inside
 		cm = _shade(inside, 0.9)
 		cb = inside
 	var ridge := _shade(ca, 0.82)
 	var seam := _shade(ca, 0.9)
-	var near := facing and not launched
+	# The cloth's seams show while the ship is near.
+	var near := facing and _afield < 0.5
 	return Item.new(_depth(centre), func() -> void:
 		_poly([w[0], w[1], w[3], w[2]], [ca, ca, cm, cm])
 		_poly([w[2], w[3], w[5], w[4]], [cm, cm, cb, cb])
@@ -1200,7 +1643,7 @@ func _engine_items(k: int) -> Array[Item]:
 	for t in 20:
 		var ang := TAU * t / 20.0
 		rim.append(_world(front + Vector3(cos(ang) * 9.0, sin(ang) * 9.0, 0)))
-	var spinning := launched
+	var spinning := painting == Painting.SHIP
 	items.append(Item.new(_depth(hub) - 1.0, func() -> void:
 		var c := _to_cam(hub)
 		if c.z <= NEAR:
@@ -1221,21 +1664,33 @@ func _exhaust_items(engines: int) -> Array[Item]:
 	for k in engines:
 		sources.append([_engine_hub(k) + Vector3(0, 2.0, -7), Color(1, 1, 1), 1.6])
 	var aft := _ship_basis * Vector3(0, 0, -1)
+	# The smoke and steam stream back and up, each wisp its own size and a
+	# little off the line, moving on with the flight's seconds.
+	var flow := maxf(launch_seconds, 0.0) * 2.2
+	var first := floorf(flow)
 	for src: Array in sources:
 		var origin := _world(src[0] as Vector3)
 		var colour := src[1] as Color
 		var size := float(src[2])
-		for k in 12:
-			var p := origin + aft * (k * 16.0 + k * k * 0.8) + Vector3(0, k * 3.0 + k * k * 0.9, 0)
-			var r := (size + k * 1.6) * SHIP_SCALE
-			var alpha := clampf(0.75 - k * 0.06, 0.0, 1.0)
+		for k in 22:
+			if first - k < 0.0:
+				# Not yet puffed: the flight has only just begun.
+				continue
+			var age := k + flow - first
+			var a := fposmod(sin((first - k) * 12.9898 + size) * 43758.5453, 1.0)
+			var b := fposmod(sin((first - k) * 78.233 + size) * 12543.853, 1.0)
+			var p := origin + aft * (age * 9.0 + age * age * 0.45) + Vector3((a - 0.5) * age * 2.2, age * 1.6 + age * age * (0.25 + 0.3 * b), 0)
+			var r := (size * 0.7 + age * (0.5 + 0.9 * a)) * SHIP_SCALE
+			var alpha := clampf(0.8 - age * 0.036, 0.0, 1.0) * minf(1.0, age * 1.5) * (0.55 + 0.45 * b)
+			# Smoke pales as it thins; steam is white from the start.
+			var tone := colour.lerp(Color(0.8, 0.8, 0.82), clampf(age * 0.05, 0.0, 0.8))
 			items.append(Item.new(_depth(p), func() -> void:
 				var c := _to_cam(p)
 				if c.z > NEAR:
 					var at := _project(c)
 					var px := _focal * r / c.z
-					_glow(at, px * 1.3, Color(colour, alpha * 0.6))
-					_disc(at, px * 0.75, Color(colour, alpha * 0.5))))
+					_glow(at, px * 1.3, Color(tone, alpha * 0.5))
+					_disc(at, px * 0.7, Color(tone, alpha * 0.45))))
 	return items
 
 
