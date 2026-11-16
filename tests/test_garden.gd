@@ -255,7 +255,7 @@ func test_a_plant_with_values_out_of_range_is_shown_never_saved() -> void:
 
 func test_a_garden_from_a_newer_airship_is_left_untouched() -> void:
 	var path := _folder("newer").path_join("garden.json")
-	var text := JSON.stringify({"version": 3, "plants": [Garden._plant_to(_plant(1))], "trains": []})
+	var text := JSON.stringify({"version": 4, "plants": [Garden._plant_to(_plant(1))], "trains": []})
 	_write(path, text)
 	var garden := Garden.new(path)
 	same(garden.problem(), Garden.Problem.CANNOT_READ, "problem")
@@ -549,3 +549,89 @@ func test_the_file_is_version_2_from_the_first_launch() -> void:
 	negative.valley = -1
 	garden.record(negative)
 	same(garden.problem(), Garden.Problem.CANNOT_SAVE, "a plant from no valley is shown, never saved")
+
+
+func test_trades_are_kept_and_two_windows_make_one() -> void:
+	var path := _folder("trades").path_join("garden.json")
+	var one := Garden.new(path)
+	var two := Garden.new(path)
+	one.record(_plant(1))
+	check(not (JSON.parse_string(_text(path)) as Dictionary).has("given"), "nothing about trades until one is made")
+	one.trade(0, 3, 2)
+	same(one.problem(), Garden.Problem.NONE, "saved")
+	var data: Dictionary = JSON.parse_string(_text(path))
+	same(data["version"], 3.0, "version 3: an older Airship must leave the trades alone")
+	# The other window, which hasn't heard, takes a trade too, a different
+	# one: the first stands and the second isn't made.
+	two.trade(1, 3, 4)
+	same(two.given(), [3] as Array[int], "the other window's trade, not six parts for one")
+	same(two.brought(), [0, 0, 1] as Array[int], "and one part brought")
+	var again := Garden.new(path)
+	same(again.given(), [3] as Array[int], "given, read back")
+	same(again.brought(), [0, 0, 1] as Array[int], "brought, read back")
+	two.trade(1, 3, 4)
+	same(two.given(), [3, 3] as Array[int], "asked again, knowing of the first, it is made")
+	same(two.brought(), [0, 0, 1, 0, 1] as Array[int], "a second part")
+	again.record(_plant(2))
+	same(Garden.new(path).brought(), [0, 0, 1, 0, 1] as Array[int], "a new plant keeps the trades")
+	again.trade(-1, 3, 2)
+	again.trade(0, 3, 64)
+	same(again.given(), [3, 3] as Array[int], "a trade of no kind is none")
+
+
+func test_a_launch_leaves_the_trades_behind() -> void:
+	var path := _folder("trades-launch").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.trade(0, 3, 2)
+	var other := Garden.new(path)
+	same(other.given(), [3] as Array[int], "the other window knows of the trade")
+	garden.launch()
+	same(garden.given(), [] as Array[int], "nothing given in the new valley")
+	same(garden.brought(), [] as Array[int], "nothing brought")
+	var data: Dictionary = JSON.parse_string(_text(path))
+	check(not data.has("given") and not data.has("brought"), "nor in the file")
+	same(data["version"], 2.0, "which is version 2 again")
+	# The window left behind trades for its old valley's parts.
+	other.trade(1, 3, 4)
+	same(other.valley(), 1, "it follows to the new valley")
+	same(other.given(), [] as Array[int], "and its trade isn't made there")
+	same(other.brought(), [] as Array[int], "nothing brought")
+	check(not (JSON.parse_string(_text(path)) as Dictionary).has("given"), "nor saved")
+
+
+func test_no_trade_while_the_garden_is_busy() -> void:
+	var path := _folder("trades-busy").path_join("garden.json")
+	var garden := Garden.new(path)
+	garden.record(_plant(1))
+	garden.lock_wait_ms = 0
+	DirAccess.make_dir_absolute(path + ".lock")
+	garden.trade(0, 3, 2)
+	same(garden.problem(), Garden.Problem.BUSY, "another Airship holds the lock")
+	same(garden.given(), [] as Array[int], "no trade is made: that Airship may be trading")
+	DirAccess.remove_absolute(path + ".lock")
+	garden.trade(0, 3, 2)
+	same(garden.problem(), Garden.Problem.NONE, "asked again, it is")
+	same(Garden.new(path).given(), [3] as Array[int], "and saved")
+
+
+func test_a_garden_kept_nowhere_trades_for_show() -> void:
+	var garden := Garden.new("")
+	garden.trade(0, 3, 2)
+	same(garden.given(), [3] as Array[int], "given")
+	same(garden.brought(), [0, 0, 1] as Array[int], "brought")
+	same(garden.problem(), Garden.Problem.NO_FOLDER, "and it says it is kept nowhere")
+
+
+func test_a_garden_with_bad_trades_is_left_alone() -> void:
+	var path := _folder("trades-bad").path_join("garden.json")
+	_write(path, '{"version": 3, "plants": [], "given": [-3], "brought": [1]}')
+	same(Garden.new(path).problem(), Garden.Problem.CANNOT_READ, "a negative count")
+	_write(path, '{"version": 3, "plants": [], "given": "three"}')
+	same(Garden.new(path).problem(), Garden.Problem.CANNOT_READ, "not a list")
+	for bad: String in ["[1.5]", "[\"1\"]", "[true]", "[null]", "[3e9]", "{}"]:
+		_write(path, '{"version": 3, "plants": [], "given": [3], "brought": %s}' % bad)
+		same(Garden.new(path).problem(), Garden.Problem.CANNOT_READ, "brought as %s" % bad)
+	_write(path, '{"version": 3, "plants": [], "brought": [0, 0, 1]}')
+	same(Garden.new(path).brought(), [0, 0, 1] as Array[int], "a good one reads")
+	_write(path, '{"version": 4, "plants": []}')
+	same(Garden.new(path).problem(), Garden.Problem.CANNOT_READ, "a newer Airship's garden")

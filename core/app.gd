@@ -68,8 +68,8 @@ var _to_plant := false
 # A finished plant stands on the planter: the one to plant, or a trial
 # session's, which is never kept and stands there until the next session.
 var _on_planter := false
-# The parts picked from the garden's plants in this run, by kind: at least
-# those fitted. Not saved: after a new start they are picked again.
+# The parts picked up in this run (from the garden's plants, or brought
+# by the night train), by kind: at least those fitted. Not saved: after a new start they are picked again.
 var _collected: Array[int] = []
 
 ## What the break after a session asks for, one thing at a time.
@@ -84,6 +84,9 @@ enum BreakStep {
 	COLLECT,
 	## Fit the picked parts to the airship.
 	FIT,
+	## Trade parts with the night train for one the garden is slow to make:
+	## an offer, which can be left.
+	TRADE,
 	## Launch the finished airship over the pass.
 	LAUNCH,
 }
@@ -173,7 +176,7 @@ func break_step() -> BreakStep:
 		return BreakStep.PLANT
 	if Parts.to_scrape(garden.valley_plants()) >= 0:
 		return BreakStep.SCRAPE
-	var ready := Parts.waiting(Parts.made(garden.valley_plants()), garden.fitted())
+	var ready := Parts.waiting(_have(), garden.fitted())
 	var picked := Parts.waiting(_picked(), garden.fitted())
 	for kind in Parts.KINDS:
 		if ready[kind] > picked[kind]:
@@ -181,6 +184,9 @@ func break_step() -> BreakStep:
 	for kind in Parts.KINDS:
 		if picked[kind] > 0:
 			return BreakStep.FIT
+	# Last, and only an offer: it can be left, and it waits.
+	if trade() != null:
+		return BreakStep.TRADE
 	if airship_progress() >= 1.0:
 		return BreakStep.LAUNCH
 	return BreakStep.NONE
@@ -203,8 +209,19 @@ func take_break_step() -> Array[int]:
 				scraped.append(Event.GARDEN_PROBLEM)
 			return scraped
 		BreakStep.COLLECT:
-			_collected = Parts.made(garden.valley_plants())
+			_collected = _have()
 			return [Event.BREAK]
+		BreakStep.TRADE:
+			var before := garden.problem()
+			var offer := trade()
+			garden.trade(offer.gives, Parts.TRADE_GIVES, offer.brings)
+			garden_change = Garden.Change.RESET
+			# The train's part is handed over: picked, ready to fit.
+			_collected = _have()
+			var traded: Array[int] = [Event.BREAK, Event.GARDEN]
+			if garden.problem() != before:
+				traded.append(Event.GARDEN_PROBLEM)
+			return traded
 		BreakStep.FIT:
 			var problem_before := garden.problem()
 			var fitted := garden.fitted()
@@ -247,17 +264,30 @@ func on_planter() -> bool:
 # The parts picked so far, by kind, a count for every kind: never more
 # than the garden has made, should its plants have changed since.
 func _picked() -> Array[int]:
-	var made := Parts.made(garden.valley_plants())
+	var parts := _have()
 	var picked: Array[int] = []
 	for kind in Parts.KINDS:
-		picked.append(mini(_collected[kind], made[kind]) if kind < _collected.size() else 0)
+		picked.append(mini(_collected[kind], parts[kind]) if kind < _collected.size() else 0)
 	return picked
+
+
+# The parts to hand, by kind: made by the garden, less those given to the
+# night train, and those it brought.
+func _have() -> Array[int]:
+	return Parts.have(Parts.made(garden.valley_plants()), garden.given(), garden.brought())
+
+
+## The trade the night train offers in this break, or null.
+func trade() -> Parts.Trade:
+	if session.state() == Session.State.BUILDING:
+		return null
+	return Parts.trade(garden.valley_plants(), garden.given(), garden.brought(), garden.fitted())
 
 
 ## The blueprint to build next when nobody chooses: the plant whose parts
 ## the airship is shortest of.
 func next_blueprint() -> int:
-	return Parts.most_needed(garden.valley_plants(), Parts.unlocked(airship_progress()))
+	return Parts.most_needed(garden.valley_plants(), Parts.unlocked(airship_progress()), garden.given(), garden.brought())
 
 
 ## The blueprint the next session builds: the one chosen, or the one most

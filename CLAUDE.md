@@ -41,10 +41,11 @@ archived), whose rules and tests are the spec for Airship's rules.
   test knobs). `parts.gd` is the economy: five kinds of plant by blueprint,
   each making its part once per later completed session, and the parts an
   airship needs; parts made are worked out from the garden's plants, and
-  the garden file keeps only the parts fitted and which rusted plants
+  the garden file keeps the parts fitted, those traded, which rusted plants
   were scraped clean, and the valley (airships launched; each plant
   remembers its own). The break after a session is `App.break_step()`:
-  plant, scrape, collect and fit, one click or Enter each; once every part
+  plant, scrape, collect and fit, one click or Enter each, then a trade
+  if one is offered; once every part
   is fitted the launch is offered, and only the key L sets it off (it
   can't be undone).
   A launch starts a new valley: a fresh garden and airship, the old
@@ -55,6 +56,11 @@ archived), whose rules and tests are the spec for Airship's rules.
   Each valley has its own range, hills, grass and cloth, worked out from
   its number in `hangar.gd` (`valley`, `VALLEYS`, `_roll`); the first is
   as it always was.
+  The night train trades in the break (`Parts.trade`): every fifth
+  completed session earns one trade of three parts the garden can best
+  spare for one it is slowest to make (a boiler drum), offered last in
+  the break and only on T or a click through the door, so it can be left; the garden file keeps what was given and brought
+  (version 3 from the first trade).
   Blueprints unlock as the airship grows; Left and Right choose the next
   plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.

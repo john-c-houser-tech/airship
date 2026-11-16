@@ -101,6 +101,15 @@ var _unsaved: Array[Plant] = []
 # Fitted parts only ever grow, so two windows' counts merge by the larger.
 var _fitted: Array[int] = []
 var _file_fitted: Array[int] = []
+# Spare parts given to the night train and parts it brought, by kind, and
+# the file's: kept and merged as the fitted parts are.
+var _given: Array[int] = []
+var _file_given: Array[int] = []
+var _brought: Array[int] = []
+var _file_brought: Array[int] = []
+# A trade being made: the kind given, how many, the kind brought, and the
+# valley and the parts brought so far when it was asked for. Empty otherwise.
+var _trade: Array[int] = []
 # The valley the game has reached (airships launched), and the file's.
 var _valley := 0
 var _file_valley := 0
@@ -127,6 +136,8 @@ func _init(path: String) -> void:
 	if found is Array:
 		_plants = found as Array[Plant]
 		_fitted = _file_fitted.duplicate()
+		_given = _file_given.duplicate()
+		_brought = _file_brought.duplicate()
 		_valley = _file_valley
 	elif found == Problem.CANNOT_OPEN or found == Problem.CANNOT_READ:
 		_read_only = true
@@ -181,6 +192,8 @@ func valley_plants() -> Array[Plant]:
 func launch() -> void:
 	_valley = mini(_valley + 1, 2147483647)
 	_fitted = []
+	_given = []
+	_brought = []
 	_keep()
 
 
@@ -197,11 +210,65 @@ func fitted() -> Array[int]:
 ## for a garden whose file can't be read or that is kept nowhere).
 func fit(counts: Array[int]) -> void:
 	# Only what the file can read back: no more kinds or parts than it allows.
+	_fitted = _most(_fitted, _within(counts))
+	_keep()
+
+
+## The spare parts given to the night train so far, by kind, in this valley.
+func given() -> Array[int]:
+	return _given.duplicate()
+
+
+## The parts the night train has brought so far, by kind, in this valley.
+func brought() -> Array[int]:
+	return _brought.duplicate()
+
+
+## A trade with the night train: `count` parts of the kind `gives` go,
+## and one of the kind `brings` comes. Made over the file as it is now,
+## under the lock, and only if no other Airship traded (or launched)
+## meanwhile: then that one's trade stands, and this one isn't made. Nor
+## is it made while another Airship holds the lock (`problem()` says BUSY;
+## ask again). A garden whose file can't be read, or that is kept nowhere,
+## trades for show, as it fits.
+func trade(gives: int, count: int, brings: int) -> void:
+	if gives < 0 or gives >= MOST_KINDS or brings < 0 or brings >= MOST_KINDS or count < 0:
+		return
+	_trade = [gives, count, brings, _valley, _sum(_brought)]
+	if _read_only:
+		_make_trade()
+	_keep()
+	_trade = []
+
+
+# Makes the trade asked for, if the garden is still where it was asked:
+# the same valley, and as many parts brought.
+func _make_trade() -> void:
+	if _trade.is_empty() or _trade[3] != _valley or _trade[4] != _sum(_brought):
+		return
+	while _given.size() <= _trade[0]:
+		_given.append(0)
+	while _brought.size() <= _trade[2]:
+		_brought.append(0)
+	_given[_trade[0]] = mini(_given[_trade[0]] + _trade[1], 2147483647)
+	_brought[_trade[2]] = mini(_brought[_trade[2]] + 1, 2147483647)
+	_trade = []
+
+
+static func _sum(counts: Array[int]) -> int:
+	var total := 0
+	for count: int in counts:
+		total += count
+	return total
+
+
+# Counts as the file can read them back: no more kinds or parts than it
+# allows.
+static func _within(counts: Array[int]) -> Array[int]:
 	var within: Array[int] = []
 	for k in mini(counts.size(), MOST_KINDS):
-		within.append(mini(counts[k], 2147483647))
-	_fitted = _most(_fitted, within)
-	_keep()
+		within.append(clampi(counts[k], 0, 2147483647))
+	return within
 
 
 ## Scrapes the rust off `plant`, one of plants() left to rust: from now it
@@ -254,6 +321,7 @@ func _keep() -> void:
 	_scrape_again(plants)
 	_plants = plants
 	_follow_file()
+	_make_trade()
 	save_error = _save()
 	_let_go_of_lock()
 	if save_error.is_empty():
@@ -292,8 +360,12 @@ func _follow_file() -> void:
 				plant.valley = _file_valley
 		_valley = _file_valley
 		_fitted = _file_fitted.duplicate()
+		_given = _file_given.duplicate()
+		_brought = _file_brought.duplicate()
 	elif _file_valley == _valley:
 		_fitted = _most(_fitted, _file_fitted)
+		_given = _most(_given, _file_given)
+		_brought = _most(_brought, _file_brought)
 
 
 ## The larger of two counts, kind by kind.
@@ -381,6 +453,8 @@ func _keep_unsaved(plant: Plant, why: Problem) -> Change:
 ## is no file, or the problem reading it.
 func _read() -> Variant:
 	_file_fitted = []
+	_file_given = []
+	_file_brought = []
 	_file_valley = 0
 	if not FileAccess.file_exists(_path):
 		# A link to a garden that isn't there (a synced folder that hasn't
@@ -403,18 +477,22 @@ func _read() -> Variant:
 	# A garden from a newer Airship may hold what this one doesn't know of;
 	# saving over it would drop that.
 	var version := _whole((json.data as Dictionary).get("version", 1))
-	if version != 1 and version != 2:
+	if version < 1 or version > 3:
 		return Problem.CANNOT_READ
-	# Parts fitted to the airship: absent in a garden from before there were
-	# parts, else whole numbers, none below zero.
-	var fitted_entry: Variant = (json.data as Dictionary).get("fitted", [])
-	if not fitted_entry is Array or (fitted_entry as Array).size() > MOST_KINDS:
-		return Problem.CANNOT_READ
-	var fitted_read: Array[int] = []
-	for count: Variant in fitted_entry as Array:
-		if _whole(count) < 0:
+	# Parts fitted to the airship, and those traded with the night train:
+	# absent in a garden from before there were any, else whole numbers,
+	# none below zero.
+	var counts: Array[Array] = []
+	for key: String in ["fitted", "given", "brought"]:
+		var entry: Variant = (json.data as Dictionary).get(key, [])
+		if not entry is Array or (entry as Array).size() > MOST_KINDS:
 			return Problem.CANNOT_READ
-		fitted_read.append(_whole(count))
+		var read: Array[int] = []
+		for count: Variant in entry as Array:
+			if _whole(count) < 0:
+				return Problem.CANNOT_READ
+			read.append(_whole(count))
+		counts.append(read)
 	# The valley reached: absent before any launch.
 	var valley_read := 0
 	if (json.data as Dictionary).has("valley"):
@@ -428,7 +506,9 @@ func _read() -> Variant:
 		if plant == null:
 			return Problem.CANNOT_READ
 		plants.push_front(plant)
-	_file_fitted = fitted_read
+	_file_fitted.assign(counts[0])
+	_file_given.assign(counts[1])
+	_file_brought.assign(counts[2])
 	_file_valley = valley_read
 	return plants
 
@@ -446,10 +526,17 @@ func _save() -> String:
 	# such an Airship leaves alone: saving there would drop the valleys,
 	# and which plant belongs to which can't be worked out again.
 	var valleys := _valley > 0 or _plants.any(func(plant: Plant) -> bool: return plant.valley > 0)
-	var whole := {"version": 2 if valleys else 1, "plants": entries}
+	# Version 3 once a trade is made: an Airship from before trades would
+	# drop them on saving, and the spares given could be given again.
+	var traded := _given.any(func(count: int) -> bool: return count > 0) \
+			or _brought.any(func(count: int) -> bool: return count > 0)
+	var whole := {"version": 3 if traded else 2 if valleys else 1, "plants": entries}
 	# Only once something is fitted, so a garden without parts reads as before.
 	if _fitted.any(func(count: int) -> bool: return count > 0):
 		whole["fitted"] = _fitted
+	if traded:
+		whole["given"] = _given
+		whole["brought"] = _brought
 	if _valley > 0:
 		whole["valley"] = _valley
 	var text := JSON.stringify(whole, "  ", false) + "\n"

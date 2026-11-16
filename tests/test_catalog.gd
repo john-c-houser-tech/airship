@@ -9,7 +9,8 @@ const LANGUAGES: Array[String] = ["da", "de", "es-MX", "fr", "ja", "pt-BR"]
 # their parts are Parts.PLANT_NAMES and PART_NAMES, and say() is the
 # app's own way in to the catalog.
 const PASSED_ON: Array[String] = ["catalog.translate(save_error)", "catalog.translate(source)",
-	"catalog.translate(Parts.PLANT_NAMES[next_plant])", "catalog.translate(Parts.PART_NAMES[next_plant])", "catalog.translate(Parts.PLANT_NAMES[new_plant])"]
+	"catalog.translate(Parts.PLANT_NAMES[next_plant])", "catalog.translate(Parts.PART_NAMES[next_plant])", "catalog.translate(Parts.PLANT_NAMES[new_plant])",
+	"catalog.translate(Parts.PART_NAMES[trade_gives])", "catalog.translate(Parts.PART_NAMES[trade_brings])"]
 # Folders that aren't Airship's own code.
 const NOT_SCANNED: Array[String] = ["res://tests", "res://prototypes", "res://.godot", "res://build", "res://i18n"]
 

@@ -372,3 +372,55 @@ func test_a_finished_airship_is_launched_to_the_next_valley() -> void:
 	var again := App.new(app.options)
 	same(again.garden.valley(), 1, "kept in the garden file")
 	same(again.airship_progress(), 0.0, "with the new airship as it stands")
+
+
+func test_the_night_train_trades_in_the_break() -> void:
+	var app := _app(25 * 60, "trade")
+	var sessions := 0
+	# Gear-flowers only: cogs made fast, and nothing makes a strut.
+	while app.break_step() != App.BreakStep.TRADE and sessions < 12:
+		app.start(Parts.Kind.GEAR_FLOWER, sessions + 1)
+		check(app.trade() == null, "no trade is offered while the arm builds")
+		app.advance(25 * 60 * 1000)
+		sessions += 1
+		while app.break_step() != App.BreakStep.NONE and app.break_step() != App.BreakStep.TRADE:
+			app.take_break_step()
+	same(sessions, 5, "the fifth session earns a trade, offered last")
+	same(app.garden.fitted()[Parts.Kind.GEAR_FLOWER], 10, "after the cogs are fitted")
+	same(app.trade().gives, Parts.Kind.GEAR_FLOWER, "the train takes cogs")
+	same(app.trade().brings, Parts.Kind.GIRDER_REED, "and brings a strut")
+	same(app.take_break_step(), [App.Event.BREAK, App.Event.GARDEN] as Array[int], "trading says so")
+	same(app.garden.given(), [3] as Array[int], "three cogs given")
+	same(app.garden.brought(), [0, 0, 1] as Array[int], "one strut brought")
+	same(app.break_step(), App.BreakStep.FIT, "the strut is ready to fit")
+	app.take_break_step()
+	same(app.garden.fitted()[Parts.Kind.GIRDER_REED], 1, "the strut is on the airship")
+	same(app.garden.fitted()[Parts.Kind.GEAR_FLOWER], 10, "and no cog came off it")
+	same(app.break_step(), App.BreakStep.NONE, "the break is done")
+	var again := App.new(app.options)
+	same(again.break_step(), App.BreakStep.NONE, "a new start doesn't trade again")
+	# The cogs given are made up before any more reach the ship.
+	app.start(Parts.Kind.GEAR_FLOWER, 6)
+	app.advance(25 * 60 * 1000)
+	app.take_break_step()
+	same(app.break_step(), App.BreakStep.COLLECT, "15 cogs made, 12 to hand: two more for the ship")
+	app.take_break_step()
+	app.take_break_step()
+	same(app.garden.fitted()[Parts.Kind.GEAR_FLOWER], 12, "fitted")
+
+
+func test_a_trade_can_be_left_and_two_can_wait() -> void:
+	var app := _app(25 * 60, "trade-left")
+	for n in 10:
+		app.start(Parts.Kind.GEAR_FLOWER, n + 1)
+		app.advance(25 * 60 * 1000)
+		while app.break_step() != App.BreakStep.NONE and app.break_step() != App.BreakStep.TRADE:
+			app.take_break_step()
+	same(app.break_step(), App.BreakStep.TRADE, "the offer left at the fifth session still stands at the tenth")
+	app.take_break_step()
+	app.take_break_step()
+	same(app.break_step(), App.BreakStep.TRADE, "and the tenth session's with it")
+	app.take_break_step()
+	app.take_break_step()
+	same(app.garden.brought(), [0, 0, 2] as Array[int], "two trades, two struts")
+	same(app.break_step(), App.BreakStep.NONE, "and no third")

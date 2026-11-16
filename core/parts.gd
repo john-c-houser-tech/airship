@@ -3,8 +3,8 @@ extends RefCounted
 ## What the garden makes and what the airship needs: the game's economy, as
 ## plain sums over the garden's plants. How many parts have been made
 ## follows from which plants stand and in what order the garden saved them;
-## the garden file keeps only how many were fitted to the airship, in the
-## break after a session.
+## the garden file keeps how many were fitted to the airship, in the
+## break after a session, and how many were traded with the night train.
 ##
 ## Each plant is of one kind, by its blueprint, and makes one kind of part
 ## for as long as it stands. Only focus moves the game forward: a plant
@@ -26,6 +26,17 @@ const SESSIONS_A_PART: Array[int] = [1, 1, 1, 1, 5]
 ## lines, struts for the frame, cloth for the envelope, boiler drums.
 ## About fourteen well-chosen sessions build it.
 const NEEDED: Array[int] = [12, 12, 24, 20, 2]
+## The night train trades: every so many completed sessions earn one
+## trade, of so many parts of one kind for one part of another.
+const TRADE_EVERY := 5
+const TRADE_GIVES := 3
+
+
+## A trade the night train offers: the kind of part it takes
+## (TRADE_GIVES of them) and the kind of part it brings (one).
+class Trade:
+	var gives: Kind
+	var brings: Kind
 
 
 ## The kind of plant a blueprint builds. Every number is some plant, so a
@@ -101,8 +112,75 @@ static func to_scrape(plants: Array[Garden.Plant]) -> int:
 	return -1
 
 
-## The parts ready for the airship: those made, as many as the ship needs,
-## that aren't `fitted` yet. By kind.
+## The parts to hand, by kind: those the garden made, less those
+## `given` to the night train, and those it `brought`.
+static func have(made_: Array[int], given: Array[int], brought: Array[int]) -> Array[int]:
+	var parts := _none()
+	for kind in KINDS:
+		parts[kind] = maxi(made_[kind] - (given[kind] if kind < given.size() else 0), 0) \
+				+ (brought[kind] if kind < brought.size() else 0)
+	return parts
+
+
+## How long the garden as it stands takes to make `missing` parts of a
+## kind, in completed sessions: a kind with no plant standing counts as
+## slower than one plant would be.
+static func _sessions_for(kind: int, missing: int, counts: Array[int]) -> float:
+	return maxi(missing, 0) * SESSIONS_A_PART[kind] / (float(counts[kind]) if counts[kind] > 0 else 0.5)
+
+
+## The trade the night train offers now, or null. Every TRADE_EVERY
+## sessions completed earn one, and one not taken waits. The train brings
+## one part of the kind the airship will wait longest for, as the garden
+## stands (a boiler drum, or a kind no plant makes yet), and takes
+## TRADE_GIVES parts of the kind the garden can best spare: the one that
+## would still be finished soonest without them, spares first. They come
+## out of the parts made and not yet given, fitted or not: nothing comes
+## off the ship, and the garden makes them up before any more of that
+## kind reach it. Offered only when it helps: when the kind given would,
+## even so, be finished before the kind brought would have been.
+static func trade(plants: Array[Garden.Plant], given: Array[int], brought: Array[int], fitted: Array[int] = []) -> Trade:
+	var taken := 0
+	for count: int in brought:
+		taken += count
+	if taken >= sessions(plants) / TRADE_EVERY:
+		return null
+	var made_ := made(plants)
+	var parts := have(made_, given, brought)
+	var counts := standing(plants)
+	var longest := 0.0
+	var brings := -1
+	for kind in KINDS:
+		# A part the ship has no place for is no use to it.
+		if (fitted[kind] if kind < fitted.size() else 0) >= NEEDED[kind]:
+			continue
+		var wait := _sessions_for(kind, NEEDED[kind] - parts[kind], counts)
+		if wait > longest:
+			longest = wait
+			brings = kind
+	var soonest := INF
+	var gives := -1
+	for kind in KINDS:
+		var unspent := made_[kind] - (given[kind] if kind < given.size() else 0)
+		if kind == brings or unspent < TRADE_GIVES:
+			continue
+		# Spares cost nothing; the more to spare, the sooner.
+		var after := NEEDED[kind] - parts[kind] + TRADE_GIVES
+		var wait := _sessions_for(kind, after, counts) + minf(float(after), 0.0) * 0.001
+		if wait < soonest:
+			soonest = wait
+			gives = kind
+	if brings < 0 or gives < 0 or soonest >= longest:
+		return null
+	var offer := Trade.new()
+	offer.gives = gives as Kind
+	offer.brings = brings as Kind
+	return offer
+
+
+## The parts ready for the airship: those to hand (made, or brought by
+## the night train), as many as the ship needs, that aren't `fitted` yet.
+## By kind.
 static func waiting(made_: Array[int], fitted: Array[int]) -> Array[int]:
 	var ready := _none()
 	for kind in KINDS:
@@ -139,10 +217,12 @@ static func unlocked(airship: float) -> Array[int]:
 ## The plant the airship most needs next, of those unlocked (`open`): the kind whose
 ## missing parts would take the longest for the plants already standing,
 ## and one more, to make. A rough guide for when nobody chooses (it plants
-## more kettle-gourds than the drums need). Once the ship has every part,
-## the first of those unlocked.
-static func most_needed(plants: Array[Garden.Plant], open: Array[int] = []) -> Kind:
-	var parts := made(plants)
+## more kettle-gourds than the drums need). Parts traded with the night
+## train count: a drum it brought needs no gourd. Once the ship has every
+## part, the first of those unlocked.
+static func most_needed(plants: Array[Garden.Plant], open: Array[int] = [],
+		given: Array[int] = [], brought: Array[int] = []) -> Kind:
+	var parts := have(made(plants), given, brought)
 	var counts := standing(plants)
 	if open.is_empty():
 		# Nobody said which are unlocked: as if every part made were fitted.
