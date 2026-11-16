@@ -10,6 +10,7 @@ const LANGUAGES: Array[String] = ["da", "de", "es-MX", "fr", "ja", "pt-BR"]
 # app's own way in to the catalog.
 const PASSED_ON: Array[String] = ["catalog.translate(save_error)", "catalog.translate(source)",
 	"catalog.translate(Parts.PLANT_NAMES[next_plant])", "catalog.translate(Parts.PART_NAMES[next_plant])", "catalog.translate(Parts.PLANT_NAMES[new_plant])",
+	"catalog.translate(Parts.PLANT_NAMES[asked.kind])", "catalog.translate(Commissions.WEATHER_PHRASES[asked.weather])",
 	"catalog.translate(Parts.PART_NAMES[trade_gives])", "catalog.translate(Parts.PART_NAMES[trade_brings])"]
 # Folders that aren't Airship's own code.
 const NOT_SCANNED: Array[String] = ["res://tests", "res://prototypes", "res://.godot", "res://build", "res://i18n"]
@@ -34,6 +35,7 @@ func _said_in_code() -> Array[String]:
 	found.append_array(Garden.REASONS)
 	found.append_array(Parts.PLANT_NAMES)
 	found.append_array(Parts.PART_NAMES)
+	found.append_array(Commissions.WEATHER_PHRASES)
 	var literal := RegEx.create_from_string("(?:translate|say)\\(\\s*\"((?:[^\"\\\\]|\\\\.)*)\"\\s*\\)")
 	var any_call := RegEx.create_from_string("[\\w.]*(?:translate|say)\\([^\\n]*")
 	for path: String in _scripts("res://"):
@@ -79,6 +81,14 @@ func test_every_string_on_screen_is_translated_in_every_language() -> void:
 			check(catalog.translate(text) != text, "%s has no translation of: %s" % [code, text])
 
 
+## The %s and %d of a line, in order: "sd" for one of each.
+func _placeholders(text: String) -> String:
+	var found := ""
+	for hit: RegExMatch in RegEx.create_from_string("%([sd])").search_all(text):
+		found += hit.get_string(1)
+	return found
+
+
 func test_no_catalog_keeps_strings_the_code_no_longer_says() -> void:
 	var said := _said_in_code()
 	for code: String in LANGUAGES:
@@ -86,8 +96,8 @@ func test_no_catalog_keeps_strings_the_code_no_longer_says() -> void:
 		same(json.parse(FileAccess.get_file_as_string("res://i18n/%s.json" % code)), OK, code + " parses")
 		for source: String in json.data as Dictionary:
 			check(source in said, "%s keeps a string nothing says: %s" % [code, source])
-			check(source.count("%s") == ((json.data as Dictionary)[source] as String).count("%s"),
-				"%s keeps the %%s in: %s" % [code, source])
+			same(_placeholders((json.data as Dictionary)[source] as String), _placeholders(source),
+				"%s keeps the %%s and %%d, in their order, in: %s" % [code, source])
 
 
 func test_a_missing_string_falls_back_toward_english_a_step_at_a_time() -> void:

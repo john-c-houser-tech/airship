@@ -316,6 +316,7 @@ func _heard(events: Array[int]) -> void:
 				if event == App.Event.GARDEN:
 					# A new plant changes which one the ship needs next.
 					_hud.next_plant = Parts.kind_of(app.blueprint())
+					_hud.commissions = app.commissions()
 					_hud.queue_redraw()
 			App.Event.BREAK:
 				_workshop.planted = not app.on_planter()
@@ -373,6 +374,7 @@ func _heard(events: Array[int]) -> void:
 func _show_break() -> void:
 	_hud.break_step = app.break_step()
 	_hud.new_plant = Parts.kind_of(app.session.blueprint())
+	_hud.commissions = app.commissions()
 	var offer := app.trade()
 	# The train stands at the crossing for as long as it offers a trade.
 	_passers.show_standing(offer != null)

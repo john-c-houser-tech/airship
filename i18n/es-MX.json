@@ -1,5 +1,6 @@
 {
   "A plant in the garden has seized with rust. Click the garden, or press Enter, to scrape it clean.": "Una planta del jardín se quedó trabada por el óxido. Haz clic en el jardín o pulsa Enter para rasparla.",
+  "A visiting airship's commission, no hurry: %d × %s, built %s. Built so far: %d. Pennants won: %d.": "Encargo de un dirigible de paso, sin prisa: %d × %s, para construir %s. Hasta ahora: %d. Banderines ganados: %d.",
   "Another Airship is saving the garden; this plant will be saved with the next.": "Otro Airship está guardando el jardín; esta planta se guardará con la siguiente.",
   "Building. Stay with your work; press Space only to give up.": "Construyendo. Sigue con tu trabajo; pulsa Espacio solo para rendirte.",
   "Built": "Construida",
@@ -25,11 +26,15 @@
   "copper tubing": "tubos de cobre",
   "gear-flower": "flor de engranes",
   "girder-reed": "carrizo de vigas",
+  "in any weather": "con cualquier clima",
+  "in the rain": "bajo la lluvia",
   "kettle-gourd": "calabaza caldera",
   "nothing can be written beside the garden (is the disk full, or the folder read-only?)": "no se puede escribir nada junto al jardín (¿está lleno el disco o la carpeta es de solo lectura?)",
   "pipe-vine": "enredadera de tubos",
   "sail-cotton": "algodón de vela",
   "struts": "puntales",
   "the garden couldn't be written whole (is the disk full?)": "no se pudo escribir el jardín completo (¿está lleno el disco?)",
-  "the plant's values are out of range": "los valores de la planta están fuera de rango"
+  "the plant's values are out of range": "los valores de la planta están fuera de rango",
+  "under a clear sky": "con cielo despejado",
+  "under cloud": "con cielo nublado"
 }

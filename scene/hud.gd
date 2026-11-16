@@ -18,6 +18,8 @@ var next_plant := 0
 ## What the break asks for next (App.BreakStep), and the plant it's about.
 var break_step := App.BreakStep.NONE
 var new_plant := 0
+## Where the valley's commissions stand (App.commissions()).
+var commissions: Commissions.State = null
 ## The parts the night train would take and bring (Parts.Kind).
 var trade_gives := 0
 var trade_brings := 0
@@ -35,6 +37,9 @@ func _draw() -> void:
 	var top := _wrapped(font, SIZE - 16, next_step(), 16, Color(1, 1, 1, 0.95))
 	if state != Session.State.BUILDING:
 		top = _wrapped(font, top - 6, next_plant_line(), 14, Color(1, 1, 1, 0.85))
+		var asked := commission_line()
+		if not asked.is_empty():
+			top = _wrapped(font, top - 4, asked, 13, Color(1, 1, 1, 0.75))
 	var problem := _problem()
 	if not problem.is_empty():
 		_wrapped(font, top - 8, problem, 13, Color(1.0, 0.85, 0.6))
@@ -66,6 +71,17 @@ func next_step() -> String:
 		Session.State.RUSTED:
 			return catalog.translate("Left to rust. Press Space to start building again.")
 	return catalog.translate("Press Space to start 25 minutes of focus while the arm builds.")
+
+
+## What the visiting airship asks for, and how far along it is; nothing
+## before the valley's first commission.
+func commission_line() -> String:
+	if commissions == null or commissions.open == null:
+		return ""
+	var asked := commissions.open
+	var plant := catalog.translate(Parts.PLANT_NAMES[asked.kind])
+	var weather := catalog.translate(Commissions.WEATHER_PHRASES[asked.weather])
+	return catalog.translate("A visiting airship's commission, no hurry: %d × %s, built %s. Built so far: %d. Pennants won: %d.") % [asked.count, plant, weather, asked.done, commissions.met]
 
 
 ## Which plant the arm builds next, what it makes, and how to choose.
