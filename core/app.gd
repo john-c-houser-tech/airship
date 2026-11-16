@@ -128,7 +128,7 @@ func start(blueprint: int, plant_seed: int) -> Array[int]:
 		_train_left = true
 		weather.begin(plant_seed, _month())
 		# Its own numbers from the seed, so the sounds don't follow the weather.
-		_sound_plan = Sounds.roll(Random.new(plant_seed ^ 0x5_0D5), options.sound_test,
+		_sound_plan = Sounds.roll(Random.apart(plant_seed, 0x5_0D5), options.sound_test,
 			Sounds.period_of(daylight), session.seconds())
 	return _session_changed(changes, changes.state)
 

@@ -34,7 +34,11 @@ func _draw() -> void:
 		_shadowed(font, Vector2(0, 50), text, 34, HORIZONTAL_ALIGNMENT_RIGHT)
 	# Lines run longer in some languages: they wrap, and stack up from the
 	# bottom edge.
-	var top := _wrapped(font, SIZE - 16, next_step(), 16, Color(1, 1, 1, 0.95))
+	var top := SIZE - 16
+	if state != Session.State.BUILDING and break_step != App.BreakStep.NONE and break_step != App.BreakStep.TRADE:
+		# A step of the break can always be left for later.
+		top = _wrapped(font, top, catalog.translate("Or press Space to build again."), 13, Color(1, 1, 1, 0.75)) - 2
+	top = _wrapped(font, top, next_step(), 16, Color(1, 1, 1, 0.95))
 	if state != Session.State.BUILDING:
 		top = _wrapped(font, top - 6, next_plant_line(), 14, Color(1, 1, 1, 0.85))
 		var asked := commission_line()

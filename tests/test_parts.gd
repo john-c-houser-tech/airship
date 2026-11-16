@@ -210,3 +210,11 @@ func test_the_plant_most_needed_counts_what_the_train_brought() -> void:
 	var open: Array[int] = [0, 1, 2, 3, 4]
 	same(Parts.most_needed(garden, open), Parts.Kind.KETTLE_GOURD, "no drums and no gourd: a gourd")
 	check(Parts.most_needed(garden, open, [] as Array[int], [0, 0, 0, 0, 2] as Array[int]) != Parts.Kind.KETTLE_GOURD, "both drums brought: no gourd needed")
+
+
+func test_the_plant_most_needed_does_not_pile_up_gourds() -> void:
+	var open: Array[int] = [0, 1, 2, 3, 4]
+	# One gourd stands, and will make both drums in ten sessions; the 24
+	# struts, from one reed, are further off.
+	var garden := _garden([2, 3, 0, 1, 4] as Array[int])
+	same(Parts.most_needed(garden, open), Parts.Kind.GIRDER_REED, "a reed, not a second gourd")

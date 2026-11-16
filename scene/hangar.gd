@@ -845,19 +845,23 @@ func _draw_plant(base: Vector3, plant: int) -> void:
 		0:  # gear-flower
 			_gear(at, 6.0 * px, 10, brass)
 			_disc(at, 2.0 * px, Color(0.45, 0.30, 0.12))
-		1:  # pipe-vine: copper tubes curling up
-			for k in 3:
-				var off := Vector2((k - 1) * 2.4, 0) * px
-				_beam(base + Vector3((k - 1) * 2.0, 0, 0) * grown, stem_top + Vector3((k - 1) * 3.0, 2.0 - absf(k - 1) * 3.0, 0) * grown,
-					0.9 * grown, copper, Color(1, 0.8, 0.6, shine.a))
-				_disc(at + off + Vector2(0, -(2.0 - absf(k - 1) * 3.0) * px), 0.9 * px, Color(0.55, 0.30, 0.18))
-		2:  # girder-reed: light metal lattice stalks
-			for k in 3:
-				var top := base + Vector3((k - 1) * 3.0, 20.0 - absf(k - 1) * 5.0, 0) * grown
-				_girder(base + Vector3((k - 1) * 1.2, 0, 0) * grown, top, 1.6 * grown, alloy, shine)
-				var tc := _to_cam(top)
-				if tc.z > NEAR:
-					_disc(_project(tc), 1.0 * _focal / tc.z * grown, brass)
+		1:  # pipe-vine: one copper pipe climbing in square turns, as the arm builds it
+			var turns: Array[Vector3] = [Vector3(0, 5, 0), Vector3(3.5, 5, 0), Vector3(3.5, 10, 0),
+				Vector3(-3.5, 10, 0), Vector3(-3.5, 15, 0), Vector3(0, 15, 0), Vector3(0, 19, 0)]
+			var from := base
+			for turn: Vector3 in turns:
+				var to := base + turn * grown
+				_beam(from, to, 1.0 * grown, copper, Color(1, 0.8, 0.6, shine.a))
+				from = to
+			var hc := _to_cam(from)
+			if hc.z > NEAR:
+				_disc(_project(hc), 1.5 * _focal / hc.z * grown, brass)
+		2:  # girder-reed: one slender lattice mast with a brass tip
+			var top := base + Vector3(0, 22.0, 0) * grown
+			_girder(base, top, 2.2 * grown, alloy, shine)
+			var tc := _to_cam(top)
+			if tc.z > NEAR:
+				_disc(_project(tc), 1.2 * _focal / tc.z * grown, brass)
 		3:  # sail-cotton: bolls of cloth for the envelope
 			for k in 5:
 				var ang := deg_to_rad(-160.0 + k * 35.0)

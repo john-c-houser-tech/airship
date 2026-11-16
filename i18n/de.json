@@ -9,6 +9,7 @@
   "Desktop notices can't be sent (notify-send is missing).": "Desktop-Benachrichtigungen können nicht gesendet werden (notify-send fehlt).",
   "Left to rust. Press Space to start building again.": "Dem Rost überlassen. Drück die Leertaste, um neu anzufangen.",
   "Next plant: %s, which makes %s. Press Left or Right to choose another.": "Nächste Pflanze: %s, sie liefert %s. Mit Links oder Rechts wählst du eine andere.",
+  "Or press Space to build again.": "Oder drück die Leertaste, um wieder zu bauen.",
   "Press Space to start 25 minutes of focus while the arm builds.": "Leertaste drücken: 25 Minuten Fokus, während der Arm baut.",
   "Sounds are off. Press M to turn them on.": "Die Töne sind aus. Drück M, um sie einzuschalten.",
   "The airship is finished! Press L to launch it over the pass. It won't come back: a new valley begins.": "Das Luftschiff ist fertig! Drück L, um es über den Pass zu schicken. Es kommt nicht zurück: Ein neues Tal beginnt.",
