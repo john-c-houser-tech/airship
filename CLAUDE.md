@@ -58,11 +58,12 @@ archived), whose rules and tests are the spec for Airship's rules.
   Each valley has its own range, hills, grass and cloth, worked out from
   its number in `hangar.gd` (`valley`, `VALLEYS`, `_roll`); the first is
   as it always was.
-  The night train trades in the break (`Parts.trade`): every fifth
-  completed session earns one trade of three parts the garden can best
+  The night train trades in the break (`Parts.trade`): after every fifth
+  completed session it calls, for that break only, with one trade of three parts the garden can best
   spare for one it is slowest to make (a boiler drum), offered last in
   the break and only on T or a click through the door, so it can be left; the garden file keeps what was given and brought
-  (version 3 from the first trade).
+  and the sessions completed at the last trade (version 4 from the first
+  trade).
   Blueprints unlock as the airship grows; Left and Right choose the next
   plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.

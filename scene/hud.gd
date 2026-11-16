@@ -53,7 +53,7 @@ func next_step() -> String:
 		App.BreakStep.TRADE:
 			var gives := catalog.translate(Parts.PART_NAMES[trade_gives])
 			var brings := catalog.translate(Parts.PART_NAMES[trade_brings])
-			return catalog.translate("The night train offers a trade: it takes three parts your garden can best spare (%s) and brings one it is slowest to make (%s). To trade, click through the door or press T; or leave it and carry on.") % [gives, brings]
+			return catalog.translate("The night train offers a trade: it takes three parts your garden can best spare (%s) and brings one it is slowest to make (%s). To trade, click through the door or press T; or press Space to build again, and the train moves on.") % [gives, brings]
 		App.BreakStep.FIT:
 			return catalog.translate("You have parts for the airship. Click the airship, or press Enter, to fit them.")
 		App.BreakStep.LAUNCH:

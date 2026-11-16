@@ -26,8 +26,8 @@ const SESSIONS_A_PART: Array[int] = [1, 1, 1, 1, 5]
 ## lines, struts for the frame, cloth for the envelope, boiler drums.
 ## About fourteen well-chosen sessions build it.
 const NEEDED: Array[int] = [12, 12, 24, 20, 2]
-## The night train trades: every so many completed sessions earn one
-## trade, of so many parts of one kind for one part of another.
+## The night train trades: every so many completed sessions it calls with
+## one trade, of so many parts of one kind for one part of another.
 const TRADE_EVERY := 5
 const TRADE_GIVES := 3
 
@@ -129,8 +129,11 @@ static func _sessions_for(kind: int, missing: int, counts: Array[int]) -> float:
 	return maxi(missing, 0) * SESSIONS_A_PART[kind] / (float(counts[kind]) if counts[kind] > 0 else 0.5)
 
 
-## The trade the night train offers now, or null. Every TRADE_EVERY
-## sessions completed earn one, and one not taken waits. The train brings
+## The trade the night train offers now, or null. It calls after every
+## TRADE_EVERY sessions completed, for the break that follows: once the
+## next session starts, built to the end or given up, it has moved on,
+## and it trades once a visit (`traded_at` is the sessions completed at
+## the last trade). The train brings
 ## one part of the kind the airship will wait longest for, as the garden
 ## stands (a boiler drum, or a kind no plant makes yet), and takes
 ## TRADE_GIVES parts of the kind the garden can best spare: the one that
@@ -139,11 +142,18 @@ static func _sessions_for(kind: int, missing: int, counts: Array[int]) -> float:
 ## off the ship, and the garden makes them up before any more of that
 ## kind reach it. Offered only when it helps: when the kind given would,
 ## even so, be finished before the kind brought would have been.
-static func trade(plants: Array[Garden.Plant], given: Array[int], brought: Array[int], fitted: Array[int] = []) -> Trade:
+static func trade(plants: Array[Garden.Plant], given: Array[int], brought: Array[int], fitted: Array[int] = [],
+		traded_at := 0) -> Trade:
+	var completed := sessions(plants)
+	# The newest plant is the one whose session brought the train.
+	if completed == 0 or completed % TRADE_EVERY != 0 or plants[0].outcome != Garden.Outcome.BUILT or traded_at >= completed:
+		return null
+	# A garden from when trades waited has parts brought and no mark: as
+	# many as its visits so far, and it has traded on this one.
 	var taken := 0
 	for count: int in brought:
 		taken += count
-	if taken >= sessions(plants) / TRADE_EVERY:
+	if traded_at == 0 and taken >= completed / TRADE_EVERY:
 		return null
 	var made_ := made(plants)
 	var parts := have(made_, given, brought)

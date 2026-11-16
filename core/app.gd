@@ -71,6 +71,10 @@ var _on_planter := false
 # The parts picked up in this run (from the garden's plants, or brought
 # by the night train), by kind: at least those fitted. Not saved: after a new start they are picked again.
 var _collected: Array[int] = []
+# A session has started since the night train last called, so it has moved
+# on: for a session the garden doesn't keep (a trial run), which leaves no
+# plant to tell by.
+var _train_left := false
 
 ## What the break after a session asks for, one thing at a time.
 enum BreakStep {
@@ -121,6 +125,7 @@ func start(blueprint: int, plant_seed: int) -> Array[int]:
 		# A plant still on the planter goes out to the garden: the arm needs it.
 		_to_plant = false
 		_on_planter = false
+		_train_left = true
 		weather.begin(plant_seed, _month())
 		# Its own numbers from the seed, so the sounds don't follow the weather.
 		_sound_plan = Sounds.roll(Random.new(plant_seed ^ 0x5_0D5), options.sound_test,
@@ -168,7 +173,8 @@ func airship_progress() -> float:
 
 ## The next thing the break asks for; NONE while the arm builds and once
 ## everything is done. Each step is short and they run out, so the break
-## can't turn into the game; skipping them loses nothing, they wait.
+## can't turn into the game; skipping them loses nothing, they wait: all
+## but the night train's offer, which goes when the next session starts.
 func break_step() -> BreakStep:
 	if session.state() == Session.State.BUILDING:
 		return BreakStep.NONE
@@ -184,7 +190,8 @@ func break_step() -> BreakStep:
 	for kind in Parts.KINDS:
 		if picked[kind] > 0:
 			return BreakStep.FIT
-	# Last, and only an offer: it can be left, and it waits.
+	# Last, and only an offer: it can be left, and the train moves on when
+	# the next session starts.
 	if trade() != null:
 		return BreakStep.TRADE
 	if airship_progress() >= 1.0:
@@ -214,7 +221,7 @@ func take_break_step() -> Array[int]:
 		BreakStep.TRADE:
 			var before := garden.problem()
 			var offer := trade()
-			garden.trade(offer.gives, Parts.TRADE_GIVES, offer.brings)
+			garden.trade(offer.gives, Parts.TRADE_GIVES, offer.brings, Parts.sessions(garden.valley_plants()))
 			garden_change = Garden.Change.RESET
 			# The train's part is handed over: picked, ready to fit.
 			_collected = _have()
@@ -279,9 +286,9 @@ func _have() -> Array[int]:
 
 ## The trade the night train offers in this break, or null.
 func trade() -> Parts.Trade:
-	if session.state() == Session.State.BUILDING:
+	if session.state() == Session.State.BUILDING or _train_left:
 		return null
-	return Parts.trade(garden.valley_plants(), garden.given(), garden.brought(), garden.fitted())
+	return Parts.trade(garden.valley_plants(), garden.given(), garden.brought(), garden.fitted(), garden.traded_at())
 
 
 ## The blueprint to build next when nobody chooses: the plant whose parts
@@ -388,6 +395,8 @@ func _record() -> Array[int]:
 	garden_change = garden.record(plant)
 	var events: Array[int] = [Event.GARDEN]
 	if built:
+		# A session built to the end, and kept: the train may call.
+		_train_left = false
 		events.append(Event.PLANT_BUILT)
 		_chosen = -1
 		_to_plant = true
