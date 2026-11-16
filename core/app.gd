@@ -284,6 +284,12 @@ func _have() -> Array[int]:
 	return Parts.have(Parts.made(garden.valley_plants()), garden.given(), garden.brought())
 
 
+## Where the valley's commissions stand: the one open now, if any, and
+## how many were met (core/commissions.gd).
+func commissions() -> Commissions.State:
+	return Commissions.state(garden.valley_plants())
+
+
 ## The trade the night train offers in this break, or null.
 func trade() -> Parts.Trade:
 	if session.state() == Session.State.BUILDING or _train_left:

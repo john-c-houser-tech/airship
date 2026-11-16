@@ -451,3 +451,15 @@ func test_the_new_valley_has_its_own_visits() -> void:
 	for n in 5:
 		_session(app, n + 6)
 	same(app.break_step(), App.BreakStep.TRADE, "the train calls after the new valley's fifth session")
+
+
+func test_commissions_follow_the_valley() -> void:
+	var app := _app(25 * 60, "commissions")
+	for n in 4:
+		_session(app, n + 1)
+	check(app.commissions().open == null, "no commission after four sessions")
+	_session(app, 5)
+	check(app.commissions().open != null, "one comes with the fifth")
+	app.garden.launch()
+	check(app.commissions().open == null, "a new valley starts without one")
+	same(app.commissions().met, 0, "and without pennants")

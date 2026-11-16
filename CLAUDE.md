@@ -64,6 +64,10 @@ archived), whose rules and tests are the spec for Airship's rules.
   the break and only on T or a click through the door, so it can be left; the garden file keeps what was given and brought
   and the sessions completed at the last trade (version 4 from the first
   trade).
+  `commissions.gd`: a visiting airship asks for plants built a certain
+  way (kind and weather), one commission at a time and no deadline;
+  each met wins a pennant. Nothing is saved for them: it all follows
+  from the valley's plants.
   Blueprints unlock as the airship grows; Left and Right choose the next
   plant (`App.choose`), and `workshop.gd` lays out each kind's parts.
   Grove's `src/*.rs` rules and their tests are the spec.

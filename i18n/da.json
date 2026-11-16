@@ -1,5 +1,6 @@
 {
   "A plant in the garden has seized with rust. Click the garden, or press Enter, to scrape it clean.": "En plante i haven er rustet fast. Klik på haven, eller tryk Enter, for at skrabe rusten af.",
+  "A visiting airship's commission, no hurry: %d × %s, built %s. Built so far: %d. Pennants won: %d.": "En bestilling fra et luftskib på besøg, ingen hast: %d × %s, bygget %s. Bygget indtil nu: %d. Vundne vimpler: %d.",
   "Another Airship is saving the garden; this plant will be saved with the next.": "Et andet Airship gemmer haven; denne plante bliver gemt sammen med den næste.",
   "Building. Stay with your work; press Space only to give up.": "Bygger. Bliv ved med at arbejde; tryk kun på mellemrum for at give op.",
   "Built": "Bygget",
@@ -25,11 +26,15 @@
   "copper tubing": "kobberrør",
   "gear-flower": "tandhjulsblomst",
   "girder-reed": "dragersiv",
+  "in any weather": "i al slags vejr",
+  "in the rain": "i regnvejr",
   "kettle-gourd": "kedelgræskar",
   "nothing can be written beside the garden (is the disk full, or the folder read-only?)": "der kan ikke skrives noget ved siden af haven (er disken fuld, eller er mappen skrivebeskyttet?)",
   "pipe-vine": "rørranke",
   "sail-cotton": "sejlbomuld",
   "struts": "stivere",
   "the garden couldn't be written whole (is the disk full?)": "haven kunne ikke skrives helt (er disken fuld?)",
-  "the plant's values are out of range": "plantens værdier ligger uden for det tilladte område"
+  "the plant's values are out of range": "plantens værdier ligger uden for det tilladte område",
+  "under a clear sky": "under klar himmel",
+  "under cloud": "i overskyet vejr"
 }
