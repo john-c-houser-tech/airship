@@ -576,6 +576,7 @@ func _draw_land() -> void:
 	_draw_ground(far_grass, near_grass)
 	_draw_railway(dim)
 	_draw_road(dim)
+	_draw_station(dim)
 
 
 func _snow_depth(az: float, h: float) -> float:
@@ -648,6 +649,87 @@ func _draw_railway(dim: float) -> void:
 	for side: float in [-14.0, 14.0]:
 		var foot := Vector3(crossing + side, 0, z + 12)
 		_beam(foot, foot + Vector3(0, 10, 0), 0.8, _shade(Color(0.92, 0.92, 0.9), dim), Color(0, 0, 0, 0))
+
+
+## The station, beyond the track just past the crossing: where its platform
+## begins and ends, and where a train's front stands when it stops there
+## (its engine by the water tower), in feet along the line from the road.
+const STATION_FROM := 24.0
+const STATION_TO := 142.0
+const STATION_STOP := 140.0
+
+
+## An upright face in the world, looking at the hangar: from x0 to x1 along
+## the line, y0 to y1 up, at depth z.
+func _face(x0: float, x1: float, y0: float, y1: float, z: float, colour: Color) -> void:
+	_flat([Vector3(x0, y0, z), Vector3(x1, y0, z), Vector3(x1, y1, z), Vector3(x0, y1, z)], colour)
+
+
+## The station where the night train stops to trade: a stone platform, a
+## timber station house with a canopy over the platform and windows lit
+## after dark, a copper water tower for the engines, and a lamp. All of it
+## stands beyond the track, so a train goes in front of it.
+func _draw_station(dim: float) -> void:
+	var from := crossing_x() + STATION_FROM
+	var to := crossing_x() + STATION_TO
+	var z := RAILWAY_Z + 7.5
+	var night := 1.0 - _day
+	var top := 4.3
+	var timber := _shade(Color(0.50, 0.33, 0.20), dim)
+	var trim := _shade(Color(0.80, 0.74, 0.60), dim)
+	var slate := _shade(Color(0.27, 0.28, 0.31), dim)
+	var iron := _shade(Color(0.16, 0.16, 0.17), dim)
+	var lit := _shade(Color(0.20, 0.24, 0.28), dim).lerp(Color(1.0, 0.80, 0.46), 0.15 + 0.8 * night)
+	# The water tower, by where the engine stops: a copper tank on iron legs
+	# under a low cone, its spout reaching for the track.
+	var tower := to - 16.0
+	for leg: float in [-5.5, 5.5]:
+		_beam(Vector3(tower + leg, top, z + 9), Vector3(tower + leg * 0.8, 17, z + 9), 0.7, iron, Color(0, 0, 0, 0))
+	_beam(Vector3(tower - 5.2, 9, z + 9), Vector3(tower + 4.6, 15, z + 9), 0.35, iron, Color(0, 0, 0, 0))
+	_beam(Vector3(tower + 5.2, 9, z + 9), Vector3(tower - 4.6, 15, z + 9), 0.35, iron, Color(0, 0, 0, 0))
+	_face(tower - 7.0, tower + 7.0, 17, 27, z + 9, _shade(COPPER, dim * 0.9))
+	_face(tower - 7.0, tower - 3.5, 17, 27, z + 8.9, _shade(COPPER, dim * 1.15))
+	for band: float in [18.2, 22.0, 25.8]:
+		_face(tower - 7.2, tower + 7.2, band - 0.3, band + 0.3, z + 8.8, _shade(BRASS, dim))
+	_flat([Vector3(tower - 8.0, 27, z + 9), Vector3(tower + 8.0, 27, z + 9), Vector3(tower, 31, z + 9)], slate)
+	_beam(Vector3(tower - 6.0, 18.5, z + 8), Vector3(tower - 13.0, 15.5, z + 1), 0.6, iron, Color(0, 0, 0, 0))
+	# The station house: boarded walls, a slate roof with a chimney.
+	var house := from + 30.0
+	var house_to := house + 46.0
+	_face(house + 34.0, house + 37.0, 20, 28, z + 16, _shade(Color(0.42, 0.22, 0.17), dim))
+	_flat([Vector3(house - 3.0, 15.5, z + 5), Vector3(house_to + 3.0, 15.5, z + 5),
+			Vector3(house_to + 1.0, 24, z + 16), Vector3(house - 1.0, 24, z + 16)], slate)
+	_face(house, house_to, top, 15.5, z + 7, timber)
+	_face(house, house_to, 14.6, 15.5, z + 6.9, trim)
+	for board in 11:
+		var x := house + 4.0 + board * 4.0
+		_face(x, x + 0.25, top, 14.6, z + 6.9, _shade(Color(0.40, 0.26, 0.16), dim))
+	# A door and three windows, lit after dark.
+	_face(house + 20.0, house + 25.0, top, 12.4, z + 6.8, _shade(Color(0.30, 0.19, 0.12), dim))
+	_face(house + 21.0, house + 24.0, 9.6, 11.6, z + 6.7, lit)
+	for window: float in [5.0, 12.0, 31.0, 38.0]:
+		_face(house + window - 0.5, house + window + 4.5, 7.3, 12.7, z + 6.8, trim)
+		_face(house + window, house + window + 4.0, 7.8, 12.2, z + 6.7, lit)
+	# The platform: stone, with a pale edge, and the canopy on its posts.
+	_flat([Vector3(from, top, z), Vector3(to, top, z), Vector3(to, top, z + 16), Vector3(from, top, z + 16)],
+		_shade(Color(0.56, 0.54, 0.50), dim))
+	_face(from, to, 0.6, top, z, _shade(Color(0.42, 0.40, 0.37), dim))
+	_face(from, to, top - 0.5, top, z - 0.1, trim)
+	_flat([Vector3(house - 6.0, 13.2, z + 0.5), Vector3(house_to + 6.0, 13.2, z + 0.5),
+			Vector3(house_to + 6.0, 14.8, z + 7), Vector3(house - 6.0, 14.8, z + 7)], _shade(Color(0.33, 0.34, 0.37), dim))
+	_face(house - 6.0, house_to + 6.0, 12.5, 13.2, z + 0.5, trim)
+	for post in 5:
+		var x := house - 5.0 + post * 14.0
+		_beam(Vector3(x, top, z + 1), Vector3(x, 13.0, z + 1), 0.45, iron, Color(0, 0, 0, 0))
+	# The platform lamp.
+	var lamp := Vector3(from + 12.0, 14.0, z + 2)
+	_beam(Vector3(lamp.x, top, lamp.z), lamp, 0.4, iron, Color(0, 0, 0, 0))
+	var seen := _to_cam(lamp)
+	if seen.z > NEAR:
+		var at := _project(seen)
+		var size := _focal / seen.z
+		_glow(at, 9.0 * size, Color(1.0, 0.85, 0.55, 0.5 * night))
+		_disc(at, maxf(0.9 * size, 1.0), _shade(Color(0.9, 0.86, 0.7), dim).lerp(Color(1.0, 0.93, 0.75), night))
 
 
 ## Where the railway meets the road, across the valley.

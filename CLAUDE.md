@@ -29,7 +29,9 @@ archived), whose rules and tests are the spec for Airship's rules.
   the airship, clear where the door shows the outside). `passers.gd` draws
   between them: the night train on the railway and the airship crossing the
   sky by day, each while its sound plays, every frame from how far into the
-  sound it is; and `falling.gd`, rain and snow moving while the arm works
+  sound it is (and the train standing at the station past the crossing,
+  which `hangar.gd` draws in the outside picture, while it offers a
+  trade); and `falling.gd`, rain and snow moving while the arm works
   (still, painted into the inside picture, between sessions). The
   workshop corner stands on the hangar's floor in the left foreground, seen
   through the same camera (`corner_canvas.gd`): `machinery.gd` (boiler,

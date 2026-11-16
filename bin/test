@@ -7,7 +7,7 @@
 #      and play a train (then a silent one) headless
 #   4. export the package's data file and run it from outside the project
 #   5. draw a frame of a session under xvfb-run, save it and check it, and
-#      a frame of the launch
+#      a frame of the launch and one of the train waiting to trade
 # Godot keeps going after most errors, so any ERROR or WARNING line in its
 # output fails the run, except the one below.
 set -eu
@@ -113,4 +113,17 @@ run frame env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_W
 run launch env -u XMODIFIERS AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=12:30 AIRSHIP_WEATHER=clear \
     timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
     -- --passing=launch:8 --shot="$PWD/$out/launch.png"
+# A garden five sessions old, so the night train offers a trade: it stands
+# at the station (the words still ask for the parts to be collected first).
+cat >"$out/trade.json" <<'GARDEN'
+{"version": 1, "plants": [{"blueprint": 2, "seed": 1, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-10T10:00:00", "minutes": 25}, {"blueprint": 3, "seed": 2, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-11T10:00:00", "minutes": 25}, {"blueprint": 2, "seed": 3, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-12T10:00:00", "minutes": 25}, {"blueprint": 3, "seed": 4, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-13T10:00:00", "minutes": 25}, {"blueprint": 0, "seed": 5, "outcome": "built", "season": "summer", "weather": "clear", "progress": 1.0, "when": "2026-06-14T10:00:00", "minutes": 25}]}
+GARDEN
+run trade env -u XMODIFIERS AIRSHIP_GARDEN="$PWD/$out/trade.json" AIRSHIP_DATE=2026-06-21 AIRSHIP_TIME=23:30 AIRSHIP_WEATHER=clear \
+    timeout 120 xvfb-run -a godot --path . --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+    -- --log-words --shot="$PWD/$out/trade.png"
+if ! grep -qx 'train: standing' "$out/trade.log"; then
+    cat "$out/trade.log"
+    echo "bin/test: trade: the train isn't standing at the station"
+    exit 1
+fi
 echo "bin/test: passed; the frame is $out/frame.png"

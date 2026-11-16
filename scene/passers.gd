@@ -1,5 +1,6 @@
 extends "res://scene/corner_canvas.gd"
-## What passes outside, seen through the door while its sound plays: the
+## What passes outside, seen through the door while its sound plays (and
+## the train that stands there silent while it offers a trade): the
 ## night train along the railway across the valley, its chimney puffing
 ## steam, its headlamp lit after dark; and by day an airship crossing the sky.
 ## Drawn between the hangar's two pictures, so the door's frame and the
@@ -7,6 +8,10 @@ extends "res://scene/corner_canvas.gd"
 ##
 ## Every frame comes from how far into its sound it is (the sound and its
 ## picture start together); nothing is carried from frame to frame.
+##
+## While the night train offers a trade it stands at the station past the
+## crossing (hangar.gd draws it), its engine by the water tower, steam
+## drifting from its chimney: a still picture, drawn once.
 
 ## Seconds into the train's sound when it reaches the crossing (the sound's
 ## loudest, in tools/make_sounds.gd).
@@ -30,6 +35,16 @@ const AIRSHIP_Z_BEYOND := 2600.0
 var kind := -1
 ## Seconds into its sound.
 var seconds := 0.0
+## Whether the train stands at the crossing, waiting to trade.
+var standing := false
+
+
+## Stands the train at the crossing, or sends it on.
+func show_standing(standing_: bool) -> void:
+	if standing == standing_:
+		return
+	standing = standing_
+	queue_redraw()
 
 
 func show_passing(kind_: int, seconds_: float) -> void:
@@ -44,10 +59,16 @@ func passing() -> bool:
 
 
 func _draw() -> void:
-	if hangar == null or hangar.daylight == null or not passing():
+	if hangar == null or hangar.daylight == null:
 		return
-	if kind == Sounds.Kind.TRAIN:
-		_draw_train()
+	var train_passing := passing() and kind == Sounds.Kind.TRAIN
+	if standing and not train_passing:
+		# The train that passes in the night is this one, on its way.
+		_draw_train(hangar.crossing_x() + hangar.STATION_STOP, false)
+	if not passing():
+		return
+	if train_passing:
+		_draw_train(_train_front(seconds), true)
 	else:
 		_draw_airship()
 
@@ -104,12 +125,12 @@ func _wheel(x: float, radius: float, colour: Color) -> void:
 	_blob(Vector3(x, RAIL + radius, hangar.RAILWAY_Z - 5.4), radius, colour)
 
 
-## A steam train running left to right along the railway, in the
+## A steam train on the railway, its engine's front at `front`, running
+## left to right (`moving`) or standing with a little steam up, in the
 ## proportions of a ten-wheeler of the 1890s: a long boiler low over three
 ## tall driving wheels, a leading bogie under the smokebox, the cab behind,
 ## a tender half the engine's length and three long carriages, windows lit.
-func _draw_train() -> void:
-	var front := _train_front(seconds)
+func _draw_train(front: float, moving: bool) -> void:
 	var light := _outside_light()
 	var iron := _dim(Color(0.15, 0.15, 0.16), light)
 	var dark := _dim(Color(0.08, 0.08, 0.09), light)
@@ -165,7 +186,7 @@ func _draw_train() -> void:
 	for bogie: float in [front - 5.0, front - 10.5]:
 		_wheel(bogie, 1.5, dark)
 	_panel(front - 10.5, front - 5.5, 3.4, 5.6, iron, 0.5)
-	# Three driving wheels as tall as a man, red, turning; the rod that
+	# Three driving wheels as tall as a man, red, turned as far as the train has come; the rod that
 	# couples them rides round with their cranks.
 	var drivers: Array[float] = [front - 16.0, front - 22.3, front - 28.6]
 	for driver: float in drivers:
@@ -185,7 +206,27 @@ func _draw_train() -> void:
 		var lamp := _view(Vector3(front - 2.4, 12.1, z - 0.5))
 		draw_circle(Vector2(lamp.x, lamp.y), maxf(8.0 * lamp.z, 2.5), Color(1.0, 0.9, 0.6, 0.25 * night))
 		draw_circle(Vector2(lamp.x, lamp.y), maxf(1.6 * lamp.z, 1.0), Color(1.0, 0.95, 0.8, night))
-	_draw_exhaust(light)
+	if moving:
+		_draw_exhaust(light)
+	else:
+		_draw_idle_steam(front, light)
+
+
+## A standing engine's steam: a slow column from the chimney, leaning a
+## little down the line, each wisp where it always is.
+func _draw_idle_steam(front: float, light: float) -> void:
+	var z: float = hangar.RAILWAY_Z - 5.0
+	for k in 26:
+		var age := k * 0.3
+		var a := _chance(k * 3.1 + 2.0)
+		var b := _chance(k * 1.7 + 9.0)
+		var x := front - CHIMNEY_BACK + (a - 0.5) * (0.8 + age * 1.3) - age * age * 0.25
+		var y := CHIMNEY_TOP + age * 4.2 + b * 1.5
+		var radius := 0.8 + 1.1 * age * (0.6 + 0.8 * a)
+		var alpha := 0.3 * exp(-age * 0.3) * (0.6 + 0.4 * b)
+		var shade := lerpf(0.6, 0.93, clampf(age * 0.5, 0.0, 1.0)) * light + 0.04
+		var at := _view(Vector3(x, y, z))
+		draw_circle(Vector2(at.x, at.y), maxf(radius * at.z, 0.5), Color(shade, shade, shade + 0.01, alpha))
 
 
 ## A number from 0 to 1 that belongs to `n`: the same every frame.
